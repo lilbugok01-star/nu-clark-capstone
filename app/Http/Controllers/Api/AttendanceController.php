@@ -76,7 +76,7 @@ class AttendanceController extends Controller
         $photoPath = null;
         if ($request->hasFile('photo')) {
             $photoPath = $request->file('photo')->store(
-                'attendance-photos/' . $registration->event_id, 'public'
+                'attendance-photos/' . $registration->event_id, 's3'
             );
         }
 
