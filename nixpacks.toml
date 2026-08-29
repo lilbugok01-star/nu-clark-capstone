@@ -1,5 +1,6 @@
 [phases.setup]
 aptPkgs = ["libatomic1"]
+nixPkgs = ["php82", "php82Extensions.intl", "php82Extensions.gd", "php82Extensions.zip"]
 
 [phases.build]
 cmds = [
