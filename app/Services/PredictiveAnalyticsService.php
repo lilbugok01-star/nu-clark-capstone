@@ -18,6 +18,12 @@ use Illuminate\Support\Facades\DB;
  */
 class PredictiveAnalyticsService
 {
+    // Reuse historical aggregates within this service instance (one HTTP request).
+    private ?array $historicalSummary = null;
+    private ?array $categoryRates = null;
+    private ?array $venueRates = null;
+    private ?array $dayPatterns = null;
+
     /**
      * Forecasts expected attendance for an event using a weighted statistical approach.
      *
@@ -101,7 +107,7 @@ class PredictiveAnalyticsService
 
         // 5. Registration Momentum
         $capacity = $event->capacity > 0 ? $event->capacity : 0;
-        $currentRegistrations = $event->registeredCount();
+        $currentRegistrations = (int) ($event->active_registrations_count ?? $event->registeredCount());
         if ($capacity > 0) {
             $momentumRate = min(100, ($currentRegistrations / $capacity) * 100);
             // Convert momentum to a projected attendance rate modifier based on how early it is (simplified)
@@ -186,6 +192,9 @@ class PredictiveAnalyticsService
     {
         $upcomingEvents = Event::where('event_date', '>=', Carbon::today())
             ->whereIn('status', ['published'])
+            ->withCount(['registrations as active_registrations_count' => function ($q) {
+                $q->where('registrations.status', '!=', 'cancelled');
+            }])
             ->get();
 
         $predictions = [];
@@ -384,6 +393,10 @@ class PredictiveAnalyticsService
      */
     public function getHistoricalDataSummary(): array
     {
+        if ($this->historicalSummary !== null) {
+            return $this->historicalSummary;
+        }
+
         $completedEvents = Event::where('event_date', '<', Carbon::today())
             ->whereIn('status', ['published', 'completed']);
 
@@ -419,7 +432,7 @@ class PredictiveAnalyticsService
             $qualityNotes = 'Limited data available. Predictions may have higher variance.';
         }
 
-        return [
+        return $this->historicalSummary = [
             'total_completed_events' => $totalCompleted,
             'total_registrations' => $totalRegistrations,
             'total_verified_attendances' => $totalVerifiedAttendances,
@@ -440,7 +453,7 @@ class PredictiveAnalyticsService
      */
     public function getCategoryAttendanceRates(): array
     {
-        return $this->calculateRatesGroupedBy('category');
+        return $this->categoryRates ??= $this->calculateRatesGroupedBy('category');
     }
 
     /**
@@ -450,7 +463,7 @@ class PredictiveAnalyticsService
      */
     public function getVenueAttendanceRates(): array
     {
-        return $this->calculateRatesGroupedBy('venue');
+        return $this->venueRates ??= $this->calculateRatesGroupedBy('venue');
     }
 
     /**
@@ -460,9 +473,14 @@ class PredictiveAnalyticsService
      */
     public function getDayOfWeekPatterns(): array
     {
+        if ($this->dayPatterns !== null) {
+            return $this->dayPatterns;
+        }
+
         $events = Event::where('event_date', '<', Carbon::today())
             ->whereIn('status', ['published', 'completed'])
-            ->with(['registrations' => function ($q) {
+            ->select(['id', 'event_date'])
+            ->withCount(['registrations' => function ($q) {
                 $q->where('registrations.status', 'confirmed');
             }, 'attendances' => function ($q) {
                 $q->where('attendances.status', 'verified');
@@ -485,14 +503,11 @@ class PredictiveAnalyticsService
             }
 
             $grouped[$dayName]['events']++;
-            $grouped[$dayName]['total_regs'] += $event->registrations->count();
-            
-            // We use attendances (which is defined via hasManyThrough typically or we can query it)
-            // If attendances relationship exists directly or via through:
-            $grouped[$dayName]['total_atts'] += $event->attendances->count();
+            $grouped[$dayName]['total_regs'] += $event->registrations_count;
+            $grouped[$dayName]['total_atts'] += $event->attendances_count;
         }
 
-        return $this->formatGroupedRates($grouped);
+        return $this->dayPatterns = $this->formatGroupedRates($grouped);
     }
 
     /**
@@ -506,7 +521,8 @@ class PredictiveAnalyticsService
         $events = Event::where('event_date', '<', Carbon::today())
             ->whereIn('status', ['published', 'completed'])
             ->whereNotNull($column)
-            ->with(['registrations' => function ($q) {
+            ->select(['id', $column])
+            ->withCount(['registrations' => function ($q) {
                 $q->where('registrations.status', 'confirmed');
             }, 'attendances' => function ($q) {
                 $q->where('attendances.status', 'verified');
@@ -527,8 +543,8 @@ class PredictiveAnalyticsService
             }
 
             $grouped[$key]['events']++;
-            $grouped[$key]['total_regs'] += $event->registrations->count();
-            $grouped[$key]['total_atts'] += $event->attendances->count();
+            $grouped[$key]['total_regs'] += $event->registrations_count;
+            $grouped[$key]['total_atts'] += $event->attendances_count;
         }
 
         return $this->formatGroupedRates($grouped);
