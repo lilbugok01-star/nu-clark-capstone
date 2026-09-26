@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\SafeEmailIdentifier;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Password;
 
@@ -24,7 +25,7 @@ class RegisterRequest extends FormRequest
             'first_name'  => trim(str_replace(["\0", "\r", "\n"], '', (string) $this->input('first_name'))),
             'middle_name' => $this->filled('middle_name') ? trim(str_replace(["\0", "\r", "\n"], '', (string) $this->input('middle_name'))) : null,
             'surname'     => trim(str_replace(["\0", "\r", "\n"], '', (string) $this->input('surname'))),
-            'email'       => trim(str_replace(["\0", "\r", "\n"], '', (string) $this->input('email'))),
+            'email'       => strtolower(trim(str_replace(["\0", "\r", "\n"], '', (string) $this->input('email')))),
             'student_id'  => trim((string) $this->input('student_id')),
         ]);
     }
@@ -43,6 +44,7 @@ class RegisterRequest extends FormRequest
                 'string',
                 'email:rfc',
                 'max:255',
+                new SafeEmailIdentifier(),
                 'unique:users,email',
                 function ($attribute, $value, $fail) {
                     if (!str_ends_with(strtolower($value), '@students.nu-clark.edu.ph')) {

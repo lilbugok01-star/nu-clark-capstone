@@ -25,7 +25,7 @@
                         The order defined here determines the workflow path. Changes apply to newly submitted documents.
                     </p>
 
-                    <form action="{{ route('admin.file-hunting.save') }}" method="POST" id="signatoriesForm">
+                    <form action="{{ route('admin.file-hunting.save') }}" method="POST" id="signatoriesForm" autocomplete="off">
                         @csrf
                         <div id="signatoriesContainer">
                             @foreach($signatories as $index => $sig)
@@ -62,7 +62,7 @@
                         </div>
 
                         <div class="text-end mt-4">
-                            <button type="button" class="btn btn-light rounded-pill px-4 me-2" onclick="location.reload()">Cancel</button>
+                            <button type="button" class="btn btn-light rounded-pill px-4 me-2" onclick="cancelSignatoryChanges()">Cancel</button>
                             <button type="submit" class="btn btn-primary fw-bold rounded-pill px-5">Save Configuration</button>
                         </div>
                     </form>
@@ -124,6 +124,14 @@
 
 @push('scripts')
 <script>
+    // Restore the saved rows as well as their values; a form reset alone cannot undo added or deleted rows.
+    const savedSignatoriesHtml = document.getElementById('signatoriesContainer').innerHTML;
+
+    function cancelSignatoryChanges() {
+        document.getElementById('signatoriesContainer').innerHTML = savedSignatoriesHtml;
+        updateStepNumbers();
+    }
+
     function updateStepNumbers() {
         const rows = document.querySelectorAll('#signatoriesContainer .signatory-row');
         rows.forEach((row, idx) => {

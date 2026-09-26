@@ -13,146 +13,10 @@ use App\Http\Controllers\Web\ApprovalController;
 use App\Http\Controllers\Web\AnalyticsController;
 use App\Http\Controllers\Web\FinancialController;
 use App\Http\Controllers\Web\ProposalController;
-use App\Http\Controllers\Web\PredictiveAnalyticsController;
+use App\Http\Controllers\Web\PreviousEventComparisonController;
+use App\Http\Controllers\Web\ManagementReportController;
 
 // ── Public Routes ────────────────────────────────────────────────────────────
-Route::get('/seed-db', function () {
-    try {
-        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-
-        // 1. System Admin
-        \App\Models\User::updateOrCreate(
-            ['email' => 'admin@nu-clark.edu.ph'],
-            [
-                'first_name' => 'System',
-                'surname'    => 'Administrator',
-                'password'   => \Illuminate\Support\Facades\Hash::make('Password123@'),
-                'role'       => 'admin',
-                'is_active'  => true,
-            ]
-        );
-
-        // 2. Organizers
-        $org1 = \App\Models\User::updateOrCreate(['email' => 'organizer@nu-clark.edu.ph'], [
-            'first_name'  => 'Maria',
-            'surname'     => 'Santos',
-            'password'    => \Illuminate\Support\Facades\Hash::make('password'),
-            'role'        => 'organizer',
-            'is_active'   => true,
-        ]);
-
-        $org2 = \App\Models\User::updateOrCreate(['email' => 'faculty@nu-clark.edu.ph'], [
-            'first_name'  => 'Juan',
-            'surname'     => 'Cruz',
-            'password'    => \Illuminate\Support\Facades\Hash::make('password'),
-            'role'        => 'organizer',
-            'is_active'   => true,
-        ]);
-
-        // 3. Approvers
-        $approvers = [
-            ['first_name' => 'Arnell',       'surname' => 'Diego',    'email' => 'exec@nu-clark.edu.ph',    'role' => 'executive_director'],
-            ['first_name' => 'Ronielle',     'surname' => 'Antonio',  'email' => 'chair@nu-clark.edu.ph',   'role' => 'program_chair'],
-            ['first_name' => 'Rafaela Mae',  'surname' => 'Landayan', 'email' => 'dean@nu-clark.edu.ph',    'role' => 'dean'],
-            ['first_name' => 'Vernie',       'surname' => 'Garcia',   'email' => 'studdev@nu-clark.edu.ph', 'role' => 'student_development'],
-            ['first_name' => 'BSIT',         'surname' => 'Rep',      'email' => 'bsit@nu-clark.edu.ph',    'role' => 'student_department'],
-            ['first_name' => 'BSBA',         'surname' => 'Rep',      'email' => 'bsba@nu-clark.edu.ph',    'role' => 'student_department']
-        ];
-        foreach ($approvers as $appr) {
-            \App\Models\User::updateOrCreate(
-                ['email' => $appr['email']],
-                array_merge($appr, ['password' => \Illuminate\Support\Facades\Hash::make('password'), 'is_active' => true])
-            );
-        }
-
-        // 4. Courses
-        $courses = [
-            ['code' => 'BSIT',     'name' => 'Bachelor of Science in Information Technology'],
-            ['code' => 'BSIT-MWA', 'name' => 'BS in Information Technology (MWA)'],
-            ['code' => 'BSA',      'name' => 'Bachelor of Science in Accountancy'],
-            ['code' => 'BSTM',     'name' => 'Bachelor of Science in Tourism Management'],
-            ['code' => 'BSP',      'name' => 'Bachelor of Science in Psychology'],
-            ['code' => 'BACOMM',   'name' => 'Bachelor of Arts in Communication'],
-            ['code' => 'BAPOLSCI', 'name' => 'Bachelor of Arts in Political Science'],
-            ['code' => 'BSCPE',    'name' => 'Bachelor of Science in Computer Engineering'],
-            ['code' => 'BSCE',     'name' => 'Bachelor of Science in Civil Engineering'],
-            ['code' => 'BSMA',     'name' => 'Bachelor of Science in Management Accounting'],
-            ['code' => 'BSBA-MM',  'name' => 'Bachelor of Science in Business Administration'],
-            ['code' => 'BSARCH',   'name' => 'Bachelor of Science in Architecture'],
-        ];
-        foreach ($courses as $c) {
-            \App\Models\Course::updateOrCreate(['code' => $c['code']], array_merge($c, ['is_active' => true]));
-        }
-
-        $bsit = \App\Models\Course::where('code', 'BSIT')->first();
-
-        // 5. Sections
-        $sec = \App\Models\Section::updateOrCreate(
-            ['name' => 'ITE-201'],
-            ['course_id' => $bsit ? $bsit->id : 1, 'year_level' => 2, 'is_active' => true]
-        );
-
-        // 6. Sample Students
-        $students = [
-            ['first_name' => 'Ana',    'surname' => 'Reyes',    'email' => 'ana.reyes@students.nu-clark.edu.ph',      'student_id' => '2022-00001'],
-            ['first_name' => 'Carlos', 'surname' => 'Bautista', 'email' => 'carlos.bautista@students.nu-clark.edu.ph', 'student_id' => '2022-00002'],
-            ['first_name' => 'Maria',  'surname' => 'Garcia',   'email' => 'maria.garcia@students.nu-clark.edu.ph',    'student_id' => '2022-00003'],
-            ['first_name' => 'John',   'surname' => 'Mendoza',  'email' => 'john.mendoza@students.nu-clark.edu.ph',    'student_id' => '2022-00004'],
-            ['first_name' => 'Sofia',  'surname' => 'Cruz',     'email' => 'sofia.cruz@students.nu-clark.edu.ph',      'student_id' => '2022-00005'],
-        ];
-        foreach ($students as $sd) {
-            \App\Models\User::updateOrCreate(['email' => $sd['email']], [
-                ...$sd,
-                'password'   => \Illuminate\Support\Facades\Hash::make('password'),
-                'role'       => 'student',
-                'course_id'  => $bsit ? $bsit->id : null,
-                'section_id' => $sec ? $sec->id : null,
-                'is_active'  => true,
-            ]);
-        }
-
-        // 7. Sample Events
-        $events = [
-            [
-                'title'       => 'NU Clark Tech Expo & QR Summit 2026 (LIVE DEMO)',
-                'description' => 'Official technology showcase and live event management demo for National University Clark. Experience the live QR two-scan In & Out attendance system.',
-                'venue'       => 'NU Clark Auditorium',
-                'event_date'  => now()->toDateString(),
-                'start_time'  => '08:00',
-                'end_time'    => '20:00',
-                'capacity'    => 350,
-                'category'    => 'Academic',
-                'is_featured' => true,
-                'status'      => 'published',
-                'organizer_id'=> $org1->id,
-            ],
-            [
-                'title'       => 'NU Clark Acquaintance Party 2026',
-                'description' => 'Annual acquaintance party for all freshmen students of National University Clark.',
-                'venue'       => 'NU Clark Gymnasium',
-                'event_date'  => now()->addDays(5)->toDateString(),
-                'start_time'  => '10:00',
-                'end_time'    => '17:00',
-                'capacity'    => 500,
-                'category'    => 'Social',
-                'is_featured' => true,
-                'status'      => 'published',
-                'organizer_id'=> $org1->id,
-            ]
-        ];
-        foreach ($events as $ev) {
-            \App\Models\Event::updateOrCreate(['title' => $ev['title']], $ev);
-        }
-
-        return redirect()->route('login')->with('success', 'Database seeded successfully with all organizers, approvers, students, courses, and events!');
-    } catch (\Throwable $e) {
-        return response()->json([
-            'status' => 'error',
-            'error' => $e->getMessage(),
-            'trace' => $e->getFile() . ':' . $e->getLine(),
-        ], 500);
-    }
-});
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/events', [HomeController::class, 'events'])->name('events');
@@ -164,15 +28,29 @@ Route::get('/storage/s3/{path}', function ($path) {
     if (str_contains($path, '..') || str_starts_with($path, '/') || str_starts_with($path, '\\')) {
         abort(403, 'Invalid file path.');
     }
-    // Protect sensitive directories — require authentication
-    if (str_starts_with($path, 'signatures/') && !auth()->check()) {
-        abort(403, 'Unauthorized access to signatures.');
+    $sensitive = str_starts_with($path, 'signatures/') || str_starts_with($path, 'attendance-photos/')
+        || str_starts_with($path, 'attendance/') || str_starts_with($path, 'receipts/');
+    if ($sensitive) {
+        abort_unless(auth()->check(), 403);
+    }
+    if (str_starts_with($path, 'attendance-photos/') || str_starts_with($path, 'attendance/')) {
+        $attendance = \App\Models\Attendance::where('photo_path', $path)
+            ->orWhere('checkout_photo_path', $path)->firstOrFail();
+        \Illuminate\Support\Facades\Gate::authorize('view', $attendance->registration);
+    }
+    if (str_starts_with($path, 'receipts/')) {
+        $payment = \App\Models\EventPayment::where('receipt_path', $path)->firstOrFail();
+        \Illuminate\Support\Facades\Gate::authorize('update', $payment->event);
+    }
+    $headers = $sensitive ? ['Cache-Control' => 'private, no-store'] : [];
+    if ($sensitive && \Illuminate\Support\Facades\Storage::disk('local')->exists($path)) {
+        return \Illuminate\Support\Facades\Storage::disk('local')->response($path, null, $headers);
     }
     // Check local public disk first
     if (\Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
         $content = \Illuminate\Support\Facades\Storage::disk('public')->get($path);
         $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($path);
-        return response($content, 200)->header('Content-Type', $mime);
+        return response($content, 200, $headers)->header('Content-Type', $mime);
     }
     try {
         $disk = \Illuminate\Support\Facades\Storage::disk('s3');
@@ -185,8 +63,10 @@ Route::get('/storage/s3/{path}', function ($path) {
         $content = $disk->get($path);
         $mime = $disk->mimeType($path);
         
-        return response($content, 200)->header('Content-Type', $mime);
+        return response($content, 200, $headers)->header('Content-Type', $mime);
         
+    } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+        throw $e;
     } catch (\Exception $e) {
         \Illuminate\Support\Facades\Log::error("S3 Proxy Error for path [{$path}]: " . $e->getMessage());
         return response("Error accessing storage.", 500);
@@ -229,14 +109,6 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
 });
 
 // Force sync database (Admin-only fallback for Railway)
-Route::post('/force-sync-database', function () {
-    if (!\Illuminate\Support\Facades\Auth::check() || \Illuminate\Support\Facades\Auth::user()->role !== 'admin') {
-        abort(403, 'Admin access required.');
-    }
-    \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-    \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
-    return redirect('/')->with('success', 'Database forced sync successful!');
-})->middleware(['auth', 'role:admin']);
 
 // ── Auth Routes (guests only) ─────────────────────────────────────────────────
 Route::middleware('guest')->group(function () {
@@ -266,6 +138,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/proposals', [ProposalController::class, 'index'])->name('proposals.index');
     Route::get('/proposals/create/{eventId}', [ProposalController::class, 'create'])->name('proposal.create');
     Route::post('/proposals', [ProposalController::class, 'store'])->name('proposal.store');
+    Route::get('/proposals/{id}/edit', [ProposalController::class, 'edit'])->name('proposal.edit');
+    Route::put('/proposals/{id}', [ProposalController::class, 'update'])->name('proposal.update');
     Route::get('/proposals/{id}', [ProposalController::class, 'show'])->name('proposal.show');
     Route::post('/proposals/{id}/submit', [ProposalController::class, 'submit'])->name('proposal.submit');
     Route::post('/proposals/{id}/approve', [ProposalController::class, 'approve'])->name('proposal.approve');
@@ -312,6 +186,7 @@ Route::middleware(['auth', 'role:organizer,student_development,admin'])->prefix(
     Route::get('/attendees',              [OrganizerController::class, 'allAttendees'])->name('attendees');
     Route::get('/analytics',           [OrganizerController::class, 'analytics'])->name('analytics');
     Route::get('/scan/{token}',        [OrganizerController::class, 'scanQr'])->name('scan');
+    Route::post('/scan/{token}',       [OrganizerController::class, 'scanQr'])->name('scan.record');
 });
 
 // Student Department (Venue Reservations)
@@ -336,8 +211,10 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::post('/users/{id}/verify-email', [AdminController::class, 'verifyUserEmail'])->name('users.verify-email');
     Route::get('/courses',           [AdminController::class, 'courses'])->name('courses');
     Route::post('/courses',          [AdminController::class, 'storeCourse'])->name('courses.store');
-    Route::get('/reports',           [AdminController::class, 'reports'])->name('reports');
-    Route::get('/reports/events/pdf',[AdminController::class, 'exportEventsPdf'])->name('reports.events.pdf');
+    Route::get('/reports',           [ManagementReportController::class, 'index'])->name('reports');
+    Route::get('/reports/export/{type}', [ManagementReportController::class, 'export'])
+        ->where('type', 'events|budget-event|proposals|year-end-audit|liquidation')->name('reports.export');
+    Route::get('/reports/events/pdf', [ManagementReportController::class, 'exportEvents'])->name('reports.events.pdf');
     Route::get('/analytics',         [AnalyticsController::class, 'dashboard'])->name('analytics');
     Route::get('/analytics/export-pdf', [AnalyticsController::class, 'exportPdf'])->name('analytics.export-pdf');
     Route::get('/analytics/student/{id}', [AnalyticsController::class, 'studentProfile'])->name('analytics.student');
@@ -377,12 +254,9 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::delete('/financial/payment/{id}', [FinancialController::class, 'deletePayment'])->name('payment.delete');
     Route::get('/financial/event/{id}/export-pdf', [FinancialController::class, 'exportPdf'])->name('financial.export-pdf');
 
-    // Predictive Analytics, Scheduling Optimization & Resource Planning
-    Route::get('/predictive', [PredictiveAnalyticsController::class, 'dashboard'])->name('predictive');
-    Route::get('/predictive/event/{id}', [PredictiveAnalyticsController::class, 'eventPrediction'])->name('predictive.event');
-    Route::get('/predictive/schedule-optimizer', [PredictiveAnalyticsController::class, 'scheduleOptimizer'])->name('predictive.schedule');
-    Route::get('/predictive/resource-planner/{id}', [PredictiveAnalyticsController::class, 'resourcePlanner'])->name('predictive.resource');
-    Route::get('/predictive/export-pdf', [PredictiveAnalyticsController::class, 'exportPdf'])->name('predictive.export-pdf');
+    // Evidence-based comparison using completed events.
+    Route::get('/previous-events', [PreviousEventComparisonController::class, 'index'])->name('previous-events.index');
+    Route::get('/previous-events/{event}/compare', [PreviousEventComparisonController::class, 'show'])->name('previous-events.compare');
 });
 
 // Approver Flow
@@ -398,4 +272,3 @@ Route::middleware(['auth', 'role:adviser,department_head,dean,executive_director
     Route::post('/venues/{id}/approve',   [ApprovalController::class, 'approveVenue'])->name('venues.approve');
     Route::post('/venues/{id}/reject',    [ApprovalController::class, 'rejectVenue'])->name('venues.reject');
 });
-

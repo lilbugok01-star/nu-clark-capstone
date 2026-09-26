@@ -3,9 +3,9 @@
 namespace Tests\Feature;
 
 // use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\Support\IsolatedDatabaseTestCase;
 
-class ExampleTest extends TestCase
+class ExampleTest extends IsolatedDatabaseTestCase
 {
     /**
      * A basic test example.

@@ -68,7 +68,7 @@ class VerificationCodeMail extends Mailable
             $fromAddress = env('MAIL_FROM_ADDRESS', 'onboarding@resend.dev');
             $fromName    = env('MAIL_FROM_NAME', 'NU Clark Events');
 
-            $response = \Illuminate\Support\Facades\Http::withoutVerifying()->withHeaders([
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
                 'Authorization' => "Bearer {$resendKey}",
                 'Content-Type'  => 'application/json',
             ])->post('https://api.resend.com/emails', [
@@ -93,7 +93,7 @@ class VerificationCodeMail extends Mailable
             $fromAddress = env('MAIL_FROM_ADDRESS', 'no-reply@nu-clark.edu.ph');
             $fromName    = env('MAIL_FROM_NAME', 'NU Clark Events');
 
-            $response = \Illuminate\Support\Facades\Http::withoutVerifying()->withHeaders([
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
                 'api-key'      => $brevoKey,
                 'Content-Type' => 'application/json',
             ])->post('https://api.brevo.com/v3/smtp/email', [

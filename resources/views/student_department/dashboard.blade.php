@@ -55,7 +55,20 @@
                 evInput.style.display = 'none';
                 evInput.disabled = true;
                 evInput.required = false;
+                populateEquipmentFromEvent(evSelect.options[evSelect.selectedIndex]);
             }
+        }
+
+        function populateEquipmentFromEvent(option) {
+            const rows = document.querySelectorAll('.department-equipment-row');
+            if (!option || !option.dataset.equipment || !rows.length) return;
+            let items = [];
+            try { items = JSON.parse(option.dataset.equipment); } catch (error) { return; }
+            rows.forEach((row, index) => {
+                row.querySelector('[data-field="item_name"]').value = items[index]?.item_name || '';
+                row.querySelector('[data-field="quantity"]').value = items[index]?.quantity || 1;
+                row.querySelector('[data-field="purpose"]').value = items[index]?.purpose || '';
+            });
         }
 
         function toggleCustomVenueField() {
@@ -438,7 +451,7 @@
                             <select name="event_id" id="event_select" class="form-select" required onchange="toggleCustomFields()">
                                 <option value="">-- Select your event --</option>
                                 @foreach($myEvents as $ev)
-                                    <option value="{{ $ev->id }}">{{ $ev->title }} ({{ $ev->event_date->format('M d') }})</option>
+                                    <option value="{{ $ev->id }}" data-equipment='@json($ev->equipmentRequests->map(fn($item) => ["item_name" => $item->item_name, "quantity" => $item->quantity, "purpose" => $item->purpose])->values())'>{{ $ev->title }} ({{ $ev->event_date->format('M d') }})</option>
                                 @endforeach
                                 <option value="custom">Not on the list (Custom Event)</option>
                             </select>
@@ -593,6 +606,17 @@
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Purpose / Notes</label>
                             <textarea name="purpose" class="form-control" rows="1" placeholder="Brief description…"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold">Equipment Request Checklist</label>
+                            <p class="small text-muted mb-2">The requester and every signatory will see these items on the permission form.</p>
+                            @for($equipmentIndex = 0; $equipmentIndex < 3; $equipmentIndex++)
+                                <div class="department-equipment-row row g-2 mb-2">
+                                    <div class="col-md-5"><input data-field="item_name" type="text" name="equipment_items[{{ $equipmentIndex }}][item_name]" class="form-control" maxlength="150" placeholder="Equipment / item"></div>
+                                    <div class="col-md-2"><input data-field="quantity" type="number" name="equipment_items[{{ $equipmentIndex }}][quantity]" class="form-control" min="1" max="10000" value="1" aria-label="Quantity"></div>
+                                    <div class="col-md-5"><input data-field="purpose" type="text" name="equipment_items[{{ $equipmentIndex }}][purpose]" class="form-control" maxlength="255" placeholder="Purpose / setup note"></div>
+                                </div>
+                            @endfor
                         </div>
                     </div>
                 </div>

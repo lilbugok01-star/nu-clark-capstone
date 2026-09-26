@@ -15,34 +15,7 @@ class RegistrationController extends Controller
         $event = Event::where('status', 'published')->findOrFail($eventId);
         $user  = $request->user();
 
-        // Check event is still upcoming
-        if ($event->event_date < now()->toDateString()) {
-            return response()->json(['message' => 'This event has already passed.'], 422);
-        }
-
-        // Check capacity
-        if ($event->isFull()) {
-            return response()->json(['message' => 'This event is already at full capacity.'], 422);
-        }
-
-        // Check duplicate registration
-        if (Registration::where('user_id', $user->id)->where('event_id', $eventId)->where('status', '!=', 'cancelled')->exists()) {
-            return response()->json(['message' => 'You are already registered for this event.'], 422);
-        }
-
-        // Generate QR token (expires 24h after event ends)
-        $qrToken = Registration::generateQrToken($user->id, $eventId);
-        $qrExpiresAt = \Carbon\Carbon::parse($event->event_date->format('Y-m-d') . ' ' . $event->end_time)
-                        ->addHours(24);
-
-        $registration = Registration::create([
-            'user_id'        => $user->id,
-            'event_id'       => $eventId,
-            'qr_token'       => $qrToken,
-            'qr_expires_at'  => $qrExpiresAt,
-            'status'         => 'confirmed',
-            'registered_at'  => now(),
-        ]);
+        $registration = app(\App\Services\EventRegistrationService::class)->register($user->id, (int) $eventId);
 
         // Confirmation notification
         AppNotification::create([

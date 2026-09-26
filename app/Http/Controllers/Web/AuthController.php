@@ -19,28 +19,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Rules\SafeEmailIdentifier;
 
 class AuthController extends Controller
 {
     public function showLogin()
     {
-        try {
-            if (User::where('role', 'admin')->count() === 0) {
-                User::updateOrCreate(
-                    ['email' => 'admin@nu-clark.edu.ph'],
-                    [
-                        'first_name' => 'System',
-                        'surname'    => 'Administrator',
-                        'password'   => Hash::make('Password123@'),
-                        'role'       => 'admin',
-                        'is_active'  => true,
-                    ]
-                );
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Admin auto-creation: ' . $e->getMessage());
-        }
-
         return view('auth.login');
     }
     
@@ -57,24 +41,6 @@ class AuthController extends Controller
         $v = $request->validated();
         $remember = $request->filled('remember');
         
-        // Instant fallback: if default admin credentials are typed, ensure admin exists in DB
-        if ($v['email'] === 'admin@nu-clark.edu.ph' && $v['password'] === 'Password123@') {
-            try {
-                User::updateOrCreate(
-                    ['email' => 'admin@nu-clark.edu.ph'],
-                    [
-                        'first_name' => 'System',
-                        'surname'    => 'Administrator',
-                        'password'   => Hash::make('Password123@'),
-                        'role'       => 'admin',
-                        'is_active'  => true,
-                    ]
-                );
-            } catch (\Throwable $e) {
-                Log::warning('Admin provision on login: ' . $e->getMessage());
-            }
-        }
-
         if (!Auth::attempt(['email' => $v['email'], 'password' => $v['password']], $remember)) {
             // Log failed login attempt
             User::log('failed_login_attempt', null, null, ['email' => $v['email']]);
@@ -226,7 +192,7 @@ class AuthController extends Controller
     public function forgotPassword(Request $request)
     {
         $request->validate([
-            'email' => ['required', 'string', 'email:rfc', 'max:255'],
+            'email' => ['required', 'string', 'email:rfc', 'max:255', new SafeEmailIdentifier()],
         ]);
 
         $user = User::where('email', $request->email)->first();

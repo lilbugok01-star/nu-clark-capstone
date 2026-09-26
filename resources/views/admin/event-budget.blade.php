@@ -92,7 +92,7 @@
                                         <label class="form-label fw-semibold">Estimated Amount <span class="text-danger">*</span></label>
                                         <div class="input-group">
                                             <span class="input-group-text">₱</span>
-                                            <input type="number" step="0.01" min="0" name="estimated_amount" class="form-control @error('estimated_amount') is-invalid @enderror" value="{{ old('estimated_amount') }}" required>
+                                            <input type="number" step="0.01" min="0" max="9999999999.99" name="estimated_amount" class="form-control @error('estimated_amount') is-invalid @enderror" value="{{ old('estimated_amount') }}" required>
                                         </div>
                                         @error('estimated_amount')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                                     </div>
@@ -100,7 +100,7 @@
                                         <label class="form-label fw-semibold">Actual Amount</label>
                                         <div class="input-group">
                                             <span class="input-group-text">₱</span>
-                                            <input type="number" step="0.01" min="0" name="actual_amount" class="form-control @error('actual_amount') is-invalid @enderror" value="{{ old('actual_amount') }}">
+                                            <input type="number" step="0.01" min="0" max="9999999999.99" name="actual_amount" class="form-control @error('actual_amount') is-invalid @enderror" value="{{ old('actual_amount') }}">
                                         </div>
                                         @error('actual_amount')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                                     </div>
@@ -211,14 +211,14 @@
                                                                         <label class="form-label fw-semibold">Estimated Amount</label>
                                                                         <div class="input-group">
                                                                             <span class="input-group-text">₱</span>
-                                                                            <input type="number" step="0.01" min="0" name="estimated_amount" class="form-control" value="{{ $item->estimated_amount }}" required>
+                                                                            <input type="number" step="0.01" min="0" max="9999999999.99" name="estimated_amount" class="form-control" value="{{ $item->estimated_amount }}" required>
                                                                         </div>
                                                                     </div>
                                                                     <div class="col-md-6 mb-3">
                                                                         <label class="form-label fw-semibold">Actual Amount</label>
                                                                         <div class="input-group">
                                                                             <span class="input-group-text">₱</span>
-                                                                            <input type="number" step="0.01" min="0" name="actual_amount" class="form-control" value="{{ $item->actual_amount }}">
+                                                                            <input type="number" step="0.01" min="0" max="9999999999.99" name="actual_amount" class="form-control" value="{{ $item->actual_amount }}">
                                                                         </div>
                                                                     </div>
                                                                 </div>

@@ -33,7 +33,7 @@
                         <tr>
                             <td class="ps-4 fw-medium text-dark">{{ $proposal->proposal_number }}</td>
                             <td>{{ $proposal->event->title ?? 'N/A' }}</td>
-                            <td>{{ $proposal->preparedBy->name ?? 'N/A' }}</td>
+                            <td>{{ $proposal->preparedBy->full_name ?? 'N/A' }}</td>
                             <td>
                                 @php
                                     $badgeClass = match($proposal->status) {

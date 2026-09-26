@@ -84,6 +84,11 @@
                         </div>
                     </div>
                     <div class="d-flex gap-1 border-top pt-2 mt-2">
+                        @if($event->latestProposal)
+                            <a href="{{ route('proposal.show', $event->latestProposal) }}" class="btn btn-outline-primary btn-sm flex-fill" title="View proposal"><i class="bi bi-file-earmark-check"></i></a>
+                        @else
+                            <a href="{{ route('proposal.create', $event) }}" class="btn btn-primary btn-sm flex-fill" title="Create required proposal"><i class="bi bi-file-earmark-plus"></i></a>
+                        @endif
                         <a href="{{ route('organizer.event.attendees', $event->id) }}" class="btn btn-outline-gold btn-sm flex-fill" title="Attendees"><i class="bi bi-people"></i></a>
                         <a href="{{ route('organizer.event.edit', $event->id) }}" class="btn btn-outline-secondary btn-sm flex-fill" title="Edit"><i class="bi bi-pencil"></i></a>
                         <form action="{{ route('organizer.event.delete', $event->id) }}" method="POST" onsubmit="return confirm('Delete this event?')" class="flex-fill d-flex">

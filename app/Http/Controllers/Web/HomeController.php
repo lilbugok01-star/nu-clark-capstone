@@ -100,7 +100,7 @@ class HomeController extends Controller
 
     public function showEvent($id)
     {
-        $event = Event::with('organizer')->findOrFail($id);
+        $event = Event::with('organizer')->whereIn('status', ['published', 'completed'])->findOrFail($id);
         $event->registered_count = $event->registeredCount();
         $event->attended_count   = $event->attendedCount();
         $event->is_full          = $event->isFull();

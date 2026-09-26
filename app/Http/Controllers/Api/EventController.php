@@ -6,15 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\AppNotification;
 use App\Models\User;
+use App\Models\EquipmentRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\DB;
 
 class EventController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Event::with('organizer')->published();
+        $query = Event::with('organizer:id,first_name,middle_name,surname')->published();
 
         if ($request->search)   $query->search($request->search);
         if ($request->category) $query->where('category', $request->category);
@@ -56,6 +58,10 @@ class EventController extends Controller
             'tags'        => 'nullable|string',
             'is_featured' => 'boolean',
             'poster'      => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'equipment_items' => 'nullable|array|max:20',
+            'equipment_items.*.item_name' => 'required|string|max:150',
+            'equipment_items.*.quantity' => 'required|integer|min:1|max:10000',
+            'equipment_items.*.purpose' => 'nullable|string|max:255',
         ]);
 
         $poster_path = null;
@@ -63,22 +69,38 @@ class EventController extends Controller
             $poster_path = $request->file('poster')->store('posters', 's3');
         }
 
-        $event = Event::create([
-            ...$validated,
-            'organizer_id' => $request->user()->id,
-            'poster_path'  => $poster_path,
-            'status'       => 'pending_adviser',
-        ]);
+        $equipmentItems = $validated['equipment_items'] ?? [];
+        unset($validated['equipment_items']);
+        $event = DB::transaction(function () use ($validated, $request, $poster_path, $equipmentItems) {
+            $event = Event::create([
+                ...$validated,
+                'organizer_id' => $request->user()->id,
+                'poster_path'  => $poster_path,
+                'status'       => 'draft',
+            ]);
+            foreach ($equipmentItems as $item) {
+                EquipmentRequest::create([
+                    'event_id' => $event->id, 'requested_by' => $request->user()->id,
+                    'item_name' => trim($item['item_name']), 'quantity' => $item['quantity'],
+                    'purpose' => $item['purpose'] ?? null,
+                ]);
+            }
+            return $event;
+        });
 
         // Notifications to students are sent only once the event is fully approved and published.
         // The approval chain handles this transition.
 
-        return response()->json(['status' => 'success', 'event' => $event->load('organizer')], 201);
+        return response()->json([
+            'status' => 'success', 'event' => $event->load(['organizer', 'equipmentRequests']),
+            'next_step' => 'Create and submit the event proposal for approval.',
+        ], 201);
     }
 
     public function show($id)
     {
-        $event = Event::with('organizer', 'registrations.user')->findOrFail($id);
+        $event = Event::with('organizer:id,first_name,middle_name,surname')
+            ->whereIn('status', ['published', 'completed'])->findOrFail($id);
         $event->registered_count = $event->registeredCount();
         $event->attended_count   = $event->attendedCount();
         $event->is_full          = $event->isFull();
@@ -103,16 +125,41 @@ class EventController extends Controller
             'category'    => 'sometimes|nullable|string',
             'is_featured' => 'sometimes|boolean',
             'poster'      => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'equipment_items' => 'sometimes|array|max:20',
+            'equipment_items.*.item_name' => 'required|string|max:150',
+            'equipment_items.*.quantity' => 'required|integer|min:1|max:10000',
+            'equipment_items.*.purpose' => 'nullable|string|max:255',
         ]);
+
+        if ($request->user()->role !== 'admin') {
+            unset($validated['status']);
+        }
+        if (($validated['status'] ?? null) === 'published' && !$event->hasCompleteApprovalEvidence()) {
+            return response()->json(['message' => 'An approved proposal and all required signatory approvals are required before publication.'], 422);
+        }
+        $equipmentItems = $validated['equipment_items'] ?? null;
+        unset($validated['equipment_items']);
 
         if ($request->hasFile('poster')) {
             if ($event->poster_path) \Illuminate\Support\Facades\Storage::disk('s3')->delete($event->poster_path);
             $validated['poster_path'] = $request->file('poster')->store('posters', 's3');
         }
 
-        $event->update($validated);
+        DB::transaction(function () use ($event, $validated, $equipmentItems, $request) {
+            $event->update($validated);
+            if ($equipmentItems !== null) {
+                $event->equipmentRequests()->where('status', 'requested')->delete();
+                foreach ($equipmentItems as $item) {
+                    EquipmentRequest::create([
+                        'event_id' => $event->id, 'requested_by' => $request->user()->id,
+                        'item_name' => trim($item['item_name']), 'quantity' => $item['quantity'],
+                        'purpose' => $item['purpose'] ?? null,
+                    ]);
+                }
+            }
+        });
 
-        return response()->json(['status' => 'success', 'event' => $event->fresh('organizer')]);
+        return response()->json(['status' => 'success', 'event' => $event->fresh()->load(['organizer', 'equipmentRequests'])]);
     }
 
     public function destroy($id)
@@ -125,7 +172,7 @@ class EventController extends Controller
 
     public function upcoming()
     {
-        $events = Event::with('organizer')->upcoming()->take(10)->get()->map(function ($event) {
+        $events = Event::with('organizer:id,first_name,middle_name,surname')->upcoming()->take(10)->get()->map(function ($event) {
             $event->registered_count = $event->registeredCount();
             $event->is_full          = $event->isFull();
             return $event;

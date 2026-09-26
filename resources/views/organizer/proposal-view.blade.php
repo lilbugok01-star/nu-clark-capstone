@@ -46,19 +46,22 @@
 @endif
 
 <!-- Action Bar -->
-@if($proposal->status === 'draft' && (Auth::id() === $proposal->prepared_by || Auth::user()->role === 'admin'))
+@if(in_array($proposal->status, ['draft', 'rejected'], true) && (Auth::id() === $proposal->prepared_by || Auth::user()->role === 'admin'))
     <div class="card mb-4 border-primary shadow-sm bg-primary bg-opacity-10">
         <div class="card-body d-flex justify-content-between align-items-center py-3">
             <div>
-                <h6 class="mb-1 fw-bold text-primary"><i class="bi bi-info-circle me-2"></i>Draft Proposal</h6>
-                <p class="mb-0 small text-muted">This proposal is currently in draft. Submit it for review when ready.</p>
+                <h6 class="mb-1 fw-bold text-primary"><i class="bi bi-info-circle me-2"></i>{{ $proposal->status === 'rejected' ? 'Revision Required' : 'Draft Proposal' }}</h6>
+                <p class="mb-0 small text-muted">Edit the proposal as needed, then submit the current version for review.</p>
             </div>
-            <form action="{{ route('proposal.submit', $proposal->id) }}" method="POST">
-                @csrf
-                <button type="submit" class="btn btn-primary fw-bold" onclick="return confirm('Submit this proposal for review?')">
-                    <i class="bi bi-send me-1"></i> Submit for Review
-                </button>
-            </form>
+            <div class="d-flex gap-2">
+                <a href="{{ route('proposal.edit', $proposal) }}" class="btn btn-outline-primary fw-bold"><i class="bi bi-pencil-square me-1"></i>Edit</a>
+                @if($proposal->status === 'draft')
+                    <form action="{{ route('proposal.submit', $proposal->id) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="btn btn-primary fw-bold" onclick="return confirm('Submit this proposal for review?')"><i class="bi bi-send me-1"></i>Submit for Review</button>
+                    </form>
+                @endif
+            </div>
         </div>
     </div>
 @elseif($proposal->status === 'submitted' && Auth::user()->role === 'admin')
@@ -104,7 +107,7 @@
             <h4 class="fw-bold mb-3">{{ $proposal->event->title ?? 'N/A' }}</h4>
             <div class="d-flex mb-2">
                 <div style="width: 120px;" class="fw-bold text-muted">Date & Time:</div>
-                <div>{{ $proposal->event ? \Carbon\Carbon::parse($proposal->event->date_time)->format('F d, Y - h:i A') : 'N/A' }}</div>
+                <div>{{ $proposal->event ? $proposal->event->event_date->format('F d, Y') . ' · ' . \Carbon\Carbon::parse($proposal->event->start_time)->format('h:i A') . '–' . \Carbon\Carbon::parse($proposal->event->end_time)->format('h:i A') : 'N/A' }}</div>
             </div>
             <div class="d-flex mb-2">
                 <div style="width: 120px;" class="fw-bold text-muted">Venue:</div>
@@ -160,6 +163,21 @@
     </div>
     @endif
 
+    <div class="mb-4">
+        <h5 class="fw-bold pb-2 border-bottom" style="color: var(--nu-blue-dk);">Equipment Request Checklist</h5>
+        @forelse($proposal->event->equipmentRequests as $item)
+            <div class="d-flex justify-content-between gap-3 border-bottom py-2"><span><i class="bi bi-square me-2"></i>{{ $item->item_name }}@if($item->purpose)<small class="text-muted d-block ms-4">{{ $item->purpose }}</small>@endif</span><strong>Qty {{ $item->quantity }}</strong></div>
+        @empty
+            <p class="text-muted">No equipment requested.</p>
+        @endforelse
+    </div>
+
+    <div class="mb-4">
+        <h5 class="fw-bold pb-2 border-bottom" style="color: var(--nu-blue-dk);">Previous-Event Recommendations Applied</h5>
+        <p class="whitespace-pre-wrap">{{ $proposal->recommendations }}</p>
+        <small class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Reviewed by requester {{ $proposal->recommendations_applied_at?->format('M d, Y h:i A') }}</small>
+    </div>
+
     @if($proposal->expected_outcomes)
     <div class="mb-4">
         <h5 class="fw-bold pb-2 border-bottom" style="color: var(--nu-blue-dk);">Expected Outcomes</h5>
@@ -177,7 +195,7 @@
         <div class="col-md-6 mb-4">
             <div class="fw-bold text-muted mb-4">Prepared By:</div>
             <div class="border-bottom border-dark d-inline-block px-3 pb-1 mb-2 min-w-200 text-center">
-                <strong>{{ $proposal->preparedBy->name ?? 'N/A' }}</strong>
+                <strong>{{ $proposal->preparedBy->full_name ?? 'N/A' }}</strong>
             </div>
             <div class="text-muted small">Date: {{ $proposal->created_at->format('M d, Y') }}</div>
         </div>
@@ -186,7 +204,7 @@
             <div class="fw-bold text-muted mb-4">Approved By:</div>
             <div class="border-bottom border-dark d-inline-block px-3 pb-1 mb-2 min-w-200 text-center" style="min-width: 200px;">
                 @if($proposal->status === 'approved')
-                    <strong class="text-success">{{ $proposal->approvedBy->name ?? 'Administrator' }}</strong>
+                    <strong class="text-success">{{ $proposal->approvedBy->full_name ?? 'Administrator' }}</strong>
                     <i class="bi bi-check-circle-fill text-success ms-1"></i>
                 @else
                     <span class="text-muted font-monospace">______________________</span>

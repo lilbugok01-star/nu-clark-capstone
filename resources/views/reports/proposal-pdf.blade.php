@@ -83,8 +83,7 @@
             margin-bottom: 5px;
             height: 40px;
             text-align: center;
-            vertical-align: bottom;
-            display: table-cell;
+            line-height: 65px;
         }
         .signature-name {
             font-weight: bold;
@@ -147,7 +146,7 @@
         </tr>
         <tr>
             <td class="event-info-label">Date & Time:</td>
-            <td>{{ $proposal->event ? \Carbon\Carbon::parse($proposal->event->date_time)->format('F d, Y - h:i A') : 'N/A' }}</td>
+            <td>{{ $proposal->event ? $proposal->event->event_date->format('F d, Y') . ' · ' . \Carbon\Carbon::parse($proposal->event->start_time)->format('h:i A') . '–' . \Carbon\Carbon::parse($proposal->event->end_time)->format('h:i A') : 'N/A' }}</td>
             <td class="event-info-label">Submitted:</td>
             <td>{{ $proposal->created_at->format('M d, Y') }}</td>
         </tr>
@@ -207,6 +206,20 @@
     </div>
     @endif
 
+    <div class="section">
+        <div class="section-title">Equipment Request Checklist</div>
+        @forelse($proposal->event->equipmentRequests as $item)
+            <div>☐ {{ $item->item_name }} — Qty {{ $item->quantity }}@if($item->purpose) ({{ $item->purpose }})@endif</div>
+        @empty
+            <div>No equipment requested.</div>
+        @endforelse
+    </div>
+
+    <div class="section">
+        <div class="section-title">Previous-Event Recommendations Applied</div>
+        <div class="section-content">{{ $proposal->recommendations }}</div>
+    </div>
+
     <div class="section" style="page-break-inside: avoid;">
         <div class="section-title">Financial Details</div>
         <div>Estimated Budget Total: <span class="budget-amount">Php {{ number_format($proposal->estimated_budget, 2) }}</span></div>
@@ -237,7 +250,7 @@
         <div class="signature-box">
             <div class="signature-label">Prepared By:</div>
             <div class="signature-line">
-                <span class="signature-name">{{ $proposal->preparedBy->name ?? 'N/A' }}</span>
+                <span class="signature-name">{{ $proposal->preparedBy->full_name ?? 'N/A' }}</span>
             </div>
             <div class="signature-label">Date: {{ $proposal->created_at->format('M d, Y') }}</div>
         </div>
@@ -246,7 +259,7 @@
             <div class="signature-label">Approved By:</div>
             <div class="signature-line">
                 @if($proposal->status === 'approved')
-                    <span class="signature-name" style="color: #198754;">{{ $proposal->approvedBy->name ?? 'Administrator' }}</span>
+                    <span class="signature-name" style="color: #198754;">{{ $proposal->approvedBy->full_name ?? 'Administrator' }}</span>
                 @endif
             </div>
             <div class="signature-label">Date: {{ $proposal->approved_at ? \Carbon\Carbon::parse($proposal->approved_at)->format('M d, Y') : '________________' }}</div>

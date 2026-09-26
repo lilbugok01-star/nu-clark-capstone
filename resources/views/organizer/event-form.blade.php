@@ -9,7 +9,7 @@
                 <i class="bi bi-{{ $event ? 'pencil-square' : 'calendar-plus' }} me-2" style="color:var(--nu-gold)"></i>
                 {{ $event ? 'Edit Event' : 'Create New Event' }}
             </h4>
-            <p class="text-muted small mb-0">{{ $event ? 'Update event details and venue reservation' : 'Fill in the details to publish your event' }}</p>
+            <p class="text-muted small mb-0">{{ $event ? 'Update event details and requested equipment' : 'Create the event request, then complete its proposal for approval' }}</p>
         </div>
     </div>
 
@@ -120,6 +120,30 @@
                 </div>
             </div>
 
+            <!-- Equipment Request Card -->
+            <div class="col-12">
+                <div class="nu-card p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div><h6 class="fw-700 mb-1" style="color:var(--nu-blue)"><i class="bi bi-tools me-2" style="color:var(--nu-gold)"></i>Equipment Request</h6><small class="text-muted">This checklist appears in the proposal and the signatories' evidence.</small></div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="addEquipment"><i class="bi bi-plus-circle me-1"></i>Add item</button>
+                    </div>
+                    @php
+                        $equipmentRows = old('equipment_items', $event ? $event->equipmentRequests->map(fn($item) => ['item_name' => $item->item_name, 'quantity' => $item->quantity, 'purpose' => $item->purpose])->values()->all() : [[]]);
+                        if (empty($equipmentRows)) $equipmentRows = [[]];
+                    @endphp
+                    <div id="equipmentRows" class="d-grid gap-2">
+                        @foreach($equipmentRows as $index => $item)
+                        <div class="equipment-row row g-2 align-items-end border rounded-3 p-2" data-index="{{ $index }}">
+                            <div class="col-md-5"><label class="form-label small fw-bold">Equipment / item</label><input type="text" name="equipment_items[{{ $index }}][item_name]" class="form-control" maxlength="150" value="{{ $item['item_name'] ?? '' }}" placeholder="e.g. Projector"></div>
+                            <div class="col-md-2"><label class="form-label small fw-bold">Quantity</label><input type="number" name="equipment_items[{{ $index }}][quantity]" class="form-control" min="1" max="10000" value="{{ $item['quantity'] ?? 1 }}"></div>
+                            <div class="col-md-4"><label class="form-label small fw-bold">Purpose / setup note</label><input type="text" name="equipment_items[{{ $index }}][purpose]" class="form-control" maxlength="255" value="{{ $item['purpose'] ?? '' }}" placeholder="Where or how it will be used"></div>
+                            <div class="col-md-1"><button type="button" class="btn btn-outline-danger w-100 remove-equipment" title="Remove item"><i class="bi bi-trash"></i></button></div>
+                        </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+
             <!-- Poster & Settings Card -->
             <div class="col-12">
                 <div class="nu-card p-4">
@@ -139,7 +163,7 @@
                                 <img id="posterImg" class="rounded-2 w-100" style="max-height:150px;object-fit:cover" alt="Preview">
                             </div>
                         </div>
-                        @if($event)
+                        @if($event && Auth::user()->role === 'admin')
                         <div class="col-md-3">
                             <label class="form-label">Status</label>
                             <select name="status" class="form-select">
@@ -172,7 +196,7 @@
             <div class="col-12 d-flex gap-2">
                 <button type="submit" class="btn btn-nu-blue px-5 fw-700">
                     <i class="bi bi-{{ $event ? 'save' : 'plus-circle' }} me-2"></i>
-                    {{ $event ? 'Update Event' : 'Publish Event' }}
+                    {{ $event ? 'Update Event Request' : 'Save Event & Continue to Proposal' }}
                 </button>
                 <a href="{{ route('organizer.events') }}" class="btn btn-outline-secondary px-4">Cancel</a>
             </div>
@@ -230,6 +254,32 @@ function previewPoster(e) {
     };
     r.readAsDataURL(f);
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const rows = document.getElementById('equipmentRows');
+    const addButton = document.getElementById('addEquipment');
+    if (!rows || !addButton) return;
+
+    function bindRemoveButtons() {
+        rows.querySelectorAll('.remove-equipment').forEach(button => {
+            button.onclick = function() {
+                if (rows.querySelectorAll('.equipment-row').length === 1) {
+                    this.closest('.equipment-row').querySelectorAll('input[type="text"]').forEach(input => input.value = '');
+                    this.closest('.equipment-row').querySelector('input[type="number"]').value = 1;
+                    return;
+                }
+                this.closest('.equipment-row').remove();
+            };
+        });
+    }
+
+    addButton.addEventListener('click', function() {
+        const index = Date.now();
+        rows.insertAdjacentHTML('beforeend', `<div class="equipment-row row g-2 align-items-end border rounded-3 p-2" data-index="${index}"><div class="col-md-5"><label class="form-label small fw-bold">Equipment / item</label><input type="text" name="equipment_items[${index}][item_name]" class="form-control" maxlength="150" placeholder="e.g. Projector"></div><div class="col-md-2"><label class="form-label small fw-bold">Quantity</label><input type="number" name="equipment_items[${index}][quantity]" class="form-control" min="1" max="10000" value="1"></div><div class="col-md-4"><label class="form-label small fw-bold">Purpose / setup note</label><input type="text" name="equipment_items[${index}][purpose]" class="form-control" maxlength="255" placeholder="Where or how it will be used"></div><div class="col-md-1"><button type="button" class="btn btn-outline-danger w-100 remove-equipment" title="Remove item"><i class="bi bi-trash"></i></button></div></div>`);
+        bindRemoveButtons();
+    });
+    bindRemoveButtons();
+});
 function handleStartTimeChange() {
     const startInput = document.getElementById('startTimeInput');
     const endInput   = document.getElementById('endTimeInput');

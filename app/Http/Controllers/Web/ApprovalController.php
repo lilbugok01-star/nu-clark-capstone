@@ -41,7 +41,9 @@ class ApprovalController extends Controller implements HasMiddleware
         if ($user->role === 'department_head') {
             $eventStatus = 'pending_dept_head';
         }
-        $pendingEvents = Event::where('status', $eventStatus)->with('organizer')->orderBy('created_at', 'desc')->get();
+        $pendingEvents = Event::where('status', $eventStatus)
+            ->with(['organizer', 'approvedProposal', 'approvals', 'equipmentRequests.requestedBy'])
+            ->orderBy('created_at', 'desc')->get();
         $historyEvents = EventApproval::where('approver_id', $user->id)->with('event.organizer')->orderBy('created_at', 'desc')->get();
 
         // --- Venue Reservations (Dynamic Chain) ---
@@ -57,7 +59,7 @@ class ApprovalController extends Controller implements HasMiddleware
             if (isset($legacyMap[$user->role])) {
                 $q->orWhere('status', $legacyMap[$user->role]);
             }
-        })->with(['reservedBy', 'approvals'])->orderBy('created_at', 'desc')->get();
+        })->with(['reservedBy', 'approvals', 'equipmentRequests.requestedBy'])->orderBy('created_at', 'desc')->get();
         $historyVenues = VenueReservationApproval::where('approver_id', $user->id)->with('venueReservation.reservedBy')->orderBy('created_at', 'desc')->get();
 
         return view('approver.dashboard', compact('pendingEvents', 'historyEvents', 'pendingVenues', 'historyVenues', 'user'));
@@ -80,7 +82,7 @@ class ApprovalController extends Controller implements HasMiddleware
             try {
                 $user->e_signature_path = $request->file('e_signature')->store('signatures', 's3');
             } catch (\Throwable $e) {
-                $user->e_signature_path = $request->file('e_signature')->store('signatures', 'public');
+                $user->e_signature_path = $request->file('e_signature')->store('signatures', 'local');
             }
             $user->save();
             User::log('update_profile', $user, null, ['action' => 'upload_signature', 'path' => $user->e_signature_path]);
@@ -145,7 +147,25 @@ class ApprovalController extends Controller implements HasMiddleware
             return back()->with('error', 'Please upload your E-Signature in your profile before approving.');
         }
 
-        $request->validate(['comments' => 'nullable|string']);
+        $request->validate([
+            'comments' => 'nullable|string|max:1000',
+            'proposal_reviewed' => 'accepted',
+        ], ['proposal_reviewed.accepted' => 'Open and review the approved proposal evidence before approving this event.']);
+
+        $approvedProposal = $event->approvedProposal()->first();
+        if (!$approvedProposal) {
+            return back()->with('error', 'This event has no approved proposal evidence and cannot be approved.');
+        }
+
+        $evidenceReview = EventApproval::where('event_id', $event->id)
+            ->where('role_level', $user->role)
+            ->where('approver_id', $user->id)
+            ->where('reviewed_proposal_id', $approvedProposal->id)
+            ->whereNotNull('proposal_reviewed_at')
+            ->first();
+        if (!$evidenceReview) {
+            return back()->with('error', 'Open the approved proposal evidence before approving this event.');
+        }
 
         $currentStatus = $event->status;
         $nextStatus = '';
@@ -163,14 +183,17 @@ class ApprovalController extends Controller implements HasMiddleware
         }
 
         // Record Approval
-        EventApproval::create([
-            'event_id'         => $event->id,
-            'approver_id'      => $user->id,
-            'role_level'       => $user->role,
-            'status'           => 'approved',
-            'comments'         => $request->comments,
-            'e_signature_used' => $user->e_signature_path,
-        ]);
+        EventApproval::updateOrCreate(
+            ['event_id' => $event->id, 'role_level' => $user->role],
+            [
+                'approver_id' => $user->id,
+                'status' => 'approved',
+                'comments' => $request->comments,
+                'e_signature_used' => $user->e_signature_path,
+                'proposal_reviewed_at' => $evidenceReview->proposal_reviewed_at,
+                'reviewed_proposal_id' => $approvedProposal->id,
+            ]
+        );
 
         $event->update(['status' => $nextStatus]);
 
@@ -210,15 +233,26 @@ class ApprovalController extends Controller implements HasMiddleware
             return back()->with('error', 'You cannot reject this event because it is not in your queue.');
         }
 
-        // Record Rejection
-        EventApproval::create([
-            'event_id'         => $event->id,
-            'approver_id'      => $user->id,
-            'role_level'       => $user->role,
-            'status'           => 'rejected',
-            'comments'         => $request->comments,
-            'e_signature_used' => $user->e_signature_path,
-        ]);
+        // Record rejection without creating a duplicate role row.
+        EventApproval::updateOrCreate(
+            ['event_id' => $event->id, 'role_level' => $user->role],
+            [
+                'approver_id' => $user->id,
+                'status' => 'rejected',
+                'comments' => $request->comments,
+                'e_signature_used' => $user->e_signature_path,
+            ]
+        );
+
+        $approvedProposal = $event->approvedProposal()->first();
+        if ($approvedProposal) {
+            $approvedProposal->update([
+                'status' => 'rejected',
+                'rejection_reason' => $request->comments,
+                'approved_by' => null,
+                'approved_at' => null,
+            ]);
+        }
 
         $event->update(['status' => 'rejected']);
 
@@ -351,7 +385,7 @@ class ApprovalController extends Controller implements HasMiddleware
 
     public function showPermissionForm($id)
     {
-        $res = \App\Models\VenueReservation::with(['event', 'reservedBy', 'approvals.approver'])->findOrFail($id);
+        $res = \App\Models\VenueReservation::with(['event', 'reservedBy', 'approvals.approver', 'rooms', 'equipmentRequests.requestedBy'])->findOrFail($id);
         
         $user = Auth::user();
         
@@ -360,8 +394,17 @@ class ApprovalController extends Controller implements HasMiddleware
         $hasApproval = \App\Models\VenueReservationApproval::where('venue_reservation_id', $id)
             ->where('approver_id', $user->id)
             ->exists();
-            
-        if (!$hasApproval && $user->role !== 'admin' && $user->role !== 'student_department' && $user->role !== 'organizer') {
+
+        $legacyMap = [
+            'student_development' => 'pending_student_dev',
+            'program_chair' => 'pending_program_chair',
+            'executive_director' => 'pending_director',
+        ];
+        $assignedStatuses = array_filter(['pending_' . $user->role, $legacyMap[$user->role] ?? null]);
+        $isAssignedSignatory = in_array($res->status, $assignedStatuses, true)
+            && FileHuntingSignatory::where('role', $user->role)->where('is_active', true)->exists();
+
+        if (!$hasApproval && !$isAssignedSignatory && $user->role !== 'admin' && $user->role !== 'student_department' && $user->role !== 'organizer') {
             abort(403, 'Unauthorized access to this document.');
         }
 

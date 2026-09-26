@@ -9,6 +9,7 @@ use App\Models\Registration;
 use App\Models\AppNotification;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Gate;
 
 class AttendanceController extends Controller
 {
@@ -18,8 +19,15 @@ class AttendanceController extends Controller
      */
     public function checkin(Request $request)
     {
+        return \Illuminate\Support\Facades\DB::transaction(fn () => $this->recordCheckin($request));
+    }
+
+    private function recordCheckin(Request $request)
+    {
         $request->validate([
             'qr_token' => 'required|string',
+            'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'photo_data' => ['nullable', new \App\Rules\AttendancePhoto],
         ]);
 
         if (!$request->hasFile('photo') && empty($request->photo_data)) {
@@ -59,10 +67,11 @@ class AttendanceController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'This QR Code has expired. Please refresh the QR code on the student app.'], 422);
             }
 
-            $registration = Registration::with('event', 'user')->find($registrationId);
+            $registration = Registration::with('event', 'user')->lockForUpdate()->find($registrationId);
         } else {
             $registration = Registration::with('event', 'user')
                 ->where('qr_token', $token)
+                ->lockForUpdate()
                 ->first();
         }
 
@@ -76,6 +85,9 @@ class AttendanceController extends Controller
             ]);
             return response()->json(['status' => 'error', 'message' => 'Invalid QR code.'], 404);
         }
+
+        Gate::authorize('view', $registration);
+        abort_unless($registration->event?->status === 'published', 422, 'This event is no longer active.');
 
         if ($registration->status === 'cancelled') {
             \App\Models\AttendanceAuditLog::create([
@@ -131,6 +143,10 @@ class AttendanceController extends Controller
         $eventStartTime = \Carbon\Carbon::parse($event->event_date->toDateString() . ' ' . $event->start_time, 'Asia/Manila');
         $eventEndTime   = \Carbon\Carbon::parse($event->event_date->toDateString() . ' ' . $event->end_time, 'Asia/Manila');
         $earlyWindow    = $eventStartTime->copy()->subMinutes(30);
+
+        if ($now->gt($eventEndTime->copy()->addHours(3))) {
+            return response()->json(['status' => 'error', 'message' => 'The attendance window has closed.'], 422);
+        }
 
         if ($now->lt($earlyWindow)) {
             \App\Models\AttendanceAuditLog::create([
@@ -292,6 +308,7 @@ class AttendanceController extends Controller
      */
     public function eventAttendance($eventId)
     {
+        Gate::authorize('update', Event::findOrFail($eventId));
         $attendances = Attendance::with(['registration.user.course', 'registration.user.section', 'verifiedBy'])
             ->whereHas('registration', fn($q) => $q->where('event_id', $eventId))
             ->get();
@@ -306,6 +323,7 @@ class AttendanceController extends Controller
     {
         $attendance = Attendance::with(['registration.user', 'registration.event', 'verifiedBy'])
             ->findOrFail($id);
+        Gate::authorize('update', $attendance->registration->event);
         return response()->json($attendance);
     }
 

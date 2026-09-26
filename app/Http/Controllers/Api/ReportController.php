@@ -8,6 +8,7 @@ use App\Models\Registration;
 use App\Models\Attendance;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Exports\AttendanceExport;
@@ -18,6 +19,7 @@ class ReportController extends Controller
     public function events(Request $request)
     {
         $events = Event::with('organizer')
+            ->when(!$request->user()->isAdmin(), fn ($query) => $query->where('organizer_id', $request->user()->id))
             ->withCount([
                 'registrations as registrations_count' => fn($q) => $q->where('status', '!=', 'cancelled'),
                 'registrations as verified_attendance_count' => fn($q) => $q->whereHas('attendance', fn($aq) => $aq->where('status', 'verified'))
@@ -31,6 +33,7 @@ class ReportController extends Controller
     public function attendance($eventId)
     {
         $event = Event::findOrFail($eventId);
+        Gate::authorize('update', $event);
 
         $attendances = Attendance::with(['registration.user.course', 'registration.user.section', 'verifiedBy'])
             ->whereHas('registration', fn($q) => $q->where('event_id', $eventId))
@@ -75,6 +78,7 @@ class ReportController extends Controller
     public function exportAttendancePdf($eventId)
     {
         $event = Event::with('organizer')->findOrFail($eventId);
+        Gate::authorize('update', $event);
         $attendances = Attendance::with(['registration.user.course', 'registration.user.section'])
             ->whereHas('registration', fn($q) => $q->where('event_id', $eventId))
             ->get();
@@ -88,6 +92,7 @@ class ReportController extends Controller
     public function exportAttendanceExcel($eventId)
     {
         $event = Event::findOrFail($eventId);
+        Gate::authorize('update', $event);
         return Excel::download(new AttendanceExport($eventId), "attendance-{$event->title}-{$eventId}.xlsx");
     }
 

@@ -46,6 +46,11 @@ class VenueReservation extends Model
         return $this->hasMany(VenueReservationRoom::class);
     }
 
+    public function equipmentRequests()
+    {
+        return $this->hasMany(EquipmentRequest::class);
+    }
+
     public static function venueNames(): array
     {
         $venues = [

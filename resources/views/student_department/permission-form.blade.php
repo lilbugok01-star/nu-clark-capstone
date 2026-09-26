@@ -95,6 +95,22 @@
     </div>
 
     <div class="mb-5">
+        <h6 class="bg-light p-2 fw-bold text-uppercase mb-3" style="border-left: 5px solid #003087;">Equipment Request & Accountability Checklist</h6>
+        <div class="mb-3"><span class="info-label text-uppercase">Requested By:</span><span class="info-value">{{ $res->reservedBy->full_name }}</span></div>
+        <table class="table table-sm table-bordered align-middle">
+            <thead class="table-light"><tr><th style="width:38px">Check</th><th>Equipment / Item</th><th style="width:80px">Quantity</th><th>Purpose / Setup Note</th><th style="width:100px">Status</th></tr></thead>
+            <tbody>
+            @forelse($res->equipmentRequests as $item)
+                <tr><td class="text-center">☐</td><td>{{ $item->item_name }}</td><td class="text-center">{{ $item->quantity }}</td><td>{{ $item->purpose ?: '—' }}</td><td>{{ ucfirst($item->status) }}</td></tr>
+            @empty
+                <tr><td colspan="5" class="text-center text-muted">No equipment requested.</td></tr>
+            @endforelse
+            </tbody>
+        </table>
+        <p class="small text-muted mb-0">Signatories should verify availability and note any unavailable item before approval. The requester remains accountable for issued items.</p>
+    </div>
+
+    <div class="mb-5">
         <h6 class="bg-light p-2 fw-bold text-uppercase mb-3" style="border-left: 5px solid #003087;">Department Details</h6>
         <div class="mb-3">
             <span class="info-label text-uppercase">Reserved By:</span>

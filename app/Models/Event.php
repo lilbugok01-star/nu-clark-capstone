@@ -32,6 +32,9 @@ class Event extends Model
     public function budgets()           { return $this->hasMany(EventBudget::class); }
     public function payments()          { return $this->hasMany(EventPayment::class); }
     public function proposals()         { return $this->hasMany(EventProposal::class); }
+    public function equipmentRequests() { return $this->hasMany(EquipmentRequest::class); }
+    public function approvedProposal()  { return $this->hasOne(EventProposal::class)->where('status', 'approved')->latestOfMany(); }
+    public function latestProposal()    { return $this->hasOne(EventProposal::class)->latestOfMany(); }
 
     public function isLive(): bool
     {
@@ -85,5 +88,18 @@ class Event extends Model
     public function attendedCount(): int
     {
         return $this->registrations()->whereHas('attendance', fn($q) => $q->where('status', 'verified'))->count();
+    }
+
+    public function hasCompleteApprovalEvidence(): bool
+    {
+        $requiredRoles = ['adviser', 'department_head', 'dean', 'executive_director'];
+        $proposal = $this->approvedProposal()->first();
+
+        return $proposal !== null
+            && $this->approvals()->where('status', 'approved')
+                ->where('reviewed_proposal_id', $proposal->id)
+                ->whereNotNull('proposal_reviewed_at')
+                ->whereIn('role_level', $requiredRoles)
+                ->distinct()->count('role_level') === count($requiredRoles);
     }
 }

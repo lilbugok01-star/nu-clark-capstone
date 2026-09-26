@@ -8,10 +8,12 @@ use App\Models\Registration;
 use App\Models\Attendance;
 use App\Models\AppNotification;
 use App\Models\User;
+use App\Models\EquipmentRequest;
 use App\Exports\AttendanceExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -56,7 +58,7 @@ class OrganizerController extends Controller implements HasMiddleware
         $user = Auth::user();
         $tab  = $request->query('tab', 'upcoming');
 
-        $query = Event::where('organizer_id', $user->id)->withCount('registrations');
+        $query = Event::where('organizer_id', $user->id)->with('latestProposal')->withCount('registrations');
         if ($tab === 'past') {
             $query->where('event_date', '<', now()->toDateString())->orderByDesc('event_date');
         } else {
@@ -81,6 +83,8 @@ class OrganizerController extends Controller implements HasMiddleware
             'title'       => 'required|string|max:255',
             'description' => 'nullable|string',
             'venue'       => 'required|string',
+            'venue_type'  => 'required|string|max:255',
+            'custom_venue_type' => 'nullable|required_if:venue_type,Other|string|max:255',
             'event_date'  => 'required|date|after_or_equal:today',
             'start_time'  => 'required|date_format:H:i',
             'end_time'    => [
@@ -101,7 +105,16 @@ class OrganizerController extends Controller implements HasMiddleware
             'category'    => 'nullable|string',
             'is_featured' => 'boolean',
             'poster'      => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'equipment_items' => 'nullable|array|max:20',
+            'equipment_items.*.item_name' => 'nullable|string|max:150',
+            'equipment_items.*.quantity' => 'nullable|integer|min:1|max:10000',
+            'equipment_items.*.purpose' => 'nullable|string|max:255',
         ]);
+
+        if ($validated['venue_type'] === 'Other') {
+            $validated['venue_type'] = $validated['custom_venue_type'];
+        }
+        unset($validated['custom_venue_type']);
 
         $poster_path = null;
         if ($request->hasFile('poster')) {
@@ -131,35 +144,33 @@ class OrganizerController extends Controller implements HasMiddleware
             ]);
         }
 
-        // Events are published immediately — no signatory or approval workflow required.
-        $event = Event::create([
-            ...$validated,
-            'organizer_id'  => Auth::id(),
-            'poster_path'   => $poster_path,
-            'status'        => 'published',
-            'is_featured'   => $request->boolean('is_featured'),
-        ]);
+        $equipmentItems = $validated['equipment_items'] ?? [];
+        unset($validated['equipment_items']);
+
+        $event = DB::transaction(function () use ($validated, $poster_path, $request, $equipmentItems) {
+            $event = Event::create([
+                ...$validated,
+                'organizer_id'  => Auth::id(),
+                'poster_path'   => $poster_path,
+                'status'        => 'draft',
+                'is_featured'   => $request->boolean('is_featured'),
+            ]);
+
+            $this->storeEquipmentRequests($event, $equipmentItems);
+            return $event;
+        });
 
         User::log('create_event', $event, null, $event->toArray());
 
-        // Notify all students immediately since the event is published on creation.
-        $students = \App\Models\User::where('role', 'student')->pluck('id');
-        $notifs = $students->map(fn($uid) => [
-            'user_id'    => $uid,
-            'type'       => 'new_event',
-            'title'      => 'New Event: ' . $event->title,
-            'message'    => "A new event has been posted: {$event->title} on {$event->event_date->format('M d, Y')} at {$event->venue}.",
-            'created_at' => now(),
-            'updated_at' => now(),
-        ])->toArray();
-        \App\Models\AppNotification::insert($notifs);
-
-        return redirect()->route('organizer.events')->with('success', 'Event created successfully!');
+        return redirect()->route('proposal.create', $event)
+            ->with('success', 'Event request saved as a draft. Complete and submit its proposal for approval.');
     }
 
     public function editEvent($id)
     {
-        $event = Event::where('organizer_id', Auth::id())->findOrFail($id);
+        $event = Event::where('organizer_id', Auth::id())
+            ->with(['equipmentRequests' => fn ($query) => $query->where('status', 'requested')])
+            ->findOrFail($id);
         return view('organizer.event-form', compact('event'));
     }
 
@@ -167,7 +178,7 @@ class OrganizerController extends Controller implements HasMiddleware
     {
         $event = Event::where('organizer_id', Auth::id())->findOrFail($id);
 
-        // Only admin can set draft/completed status; organizers can only set published/cancelled
+        // The organizer cannot change workflow status; publication is controlled by signatories.
         $allowedStatuses = Auth::user()->role === 'admin'
             ? 'in:draft,cancelled,published,completed'
             : 'in:cancelled,published';
@@ -176,6 +187,8 @@ class OrganizerController extends Controller implements HasMiddleware
             'title'       => 'required|string',
             'description' => 'nullable|string',
             'venue'       => 'required|string',
+            'venue_type'  => 'required|string|max:255',
+            'custom_venue_type' => 'nullable|required_if:venue_type,Other|string|max:255',
             'event_date'  => 'required|date|after_or_equal:today',
             'start_time'  => 'required|date_format:H:i',
             'end_time'    => [
@@ -196,7 +209,23 @@ class OrganizerController extends Controller implements HasMiddleware
             'status'      => $allowedStatuses,
             'category'    => 'nullable|string',
             'poster'      => 'nullable|image|max:4096',
+            'equipment_items' => 'nullable|array|max:20',
+            'equipment_items.*.item_name' => 'nullable|string|max:150',
+            'equipment_items.*.quantity' => 'nullable|integer|min:1|max:10000',
+            'equipment_items.*.purpose' => 'nullable|string|max:255',
         ]);
+
+        if ($validated['venue_type'] === 'Other') {
+            $validated['venue_type'] = $validated['custom_venue_type'];
+        }
+        unset($validated['custom_venue_type']);
+
+        if (Auth::user()->role !== 'admin') {
+            unset($validated['status']);
+        }
+
+        $equipmentItems = $validated['equipment_items'] ?? [];
+        unset($validated['equipment_items']);
 
         if ($request->hasFile('poster')) {
             try {
@@ -207,11 +236,33 @@ class OrganizerController extends Controller implements HasMiddleware
             }
         }
         $old = $event->toArray();
-        $event->update($validated);
+        DB::transaction(function () use ($event, $validated, $equipmentItems) {
+            $event->update($validated);
+            $event->equipmentRequests()->where('status', 'requested')->delete();
+            $this->storeEquipmentRequests($event, $equipmentItems);
+        });
 
         User::log('update_event', $event, $old, $event->toArray());
 
         return redirect()->route('organizer.events')->with('success', 'Event updated!');
+    }
+
+    private function storeEquipmentRequests(Event $event, array $items): void
+    {
+        foreach ($items as $item) {
+            $name = trim((string) ($item['item_name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            EquipmentRequest::create([
+                'event_id' => $event->id,
+                'requested_by' => Auth::id(),
+                'item_name' => $name,
+                'quantity' => max(1, (int) ($item['quantity'] ?? 1)),
+                'purpose' => $item['purpose'] ?? null,
+                'status' => 'requested',
+            ]);
+        }
     }
 
     public function deleteEvent($id)
@@ -314,12 +365,23 @@ class OrganizerController extends Controller implements HasMiddleware
     // Venue Reservations have been moved to StudentDepartmentController as per workflow update.
 
     /**
-     * GET /organizer/scan/{token}
+     * GET previews a scan; POST records it with CSRF and replay protection.
      * Universal camera-based QR check-in & check-out.
      * 1st Scan: Time In (Check-in)
      * 2nd Scan: Time Out (Check-out)
      */
-    public function scanQr($token)
+    public function scanQr(Request $request, $token)
+    {
+        if ($request->isMethod('post')) {
+            $request->validate(['scan_id' => 'required|uuid']);
+        }
+
+        return \Illuminate\Support\Facades\DB::transaction(
+            fn () => $this->processQrScan($request, $token)
+        );
+    }
+
+    private function processQrScan(Request $request, string $token)
     {
         $parts = explode('|', $token);
         $registration = null;
@@ -354,10 +416,10 @@ class OrganizerController extends Controller implements HasMiddleware
                 return view('organizer.scan-result', ['status' => 'error', 'message' => 'This QR Code has expired. Please refresh the QR code on the student app.']);
             }
 
-            $registration = Registration::with(['event', 'user', 'attendance'])->find($registrationId);
+            $registration = Registration::with(['event', 'user', 'attendance'])->lockForUpdate()->find($registrationId);
             $isRotating = true;
         } else {
-            $registration = Registration::with(['event', 'user', 'attendance'])->where('qr_token', $token)->first();
+            $registration = Registration::with(['event', 'user', 'attendance'])->where('qr_token', $token)->lockForUpdate()->first();
         }
 
         if (!$registration) {
@@ -369,6 +431,11 @@ class OrganizerController extends Controller implements HasMiddleware
                 'device_info' => request()->userAgent(),
             ]);
             return view('organizer.scan-result', ['status' => 'error', 'message' => 'Invalid QR Code. Registration not found.']);
+        }
+
+        \Illuminate\Support\Facades\Gate::authorize('update', $registration->event);
+        if ($registration->status === 'cancelled' || $registration->event->status !== 'published') {
+            return view('organizer.scan-result', ['status' => 'error', 'message' => 'This registration or event is no longer active.']);
         }
 
         if ($registration->isExpired()) {
@@ -417,6 +484,10 @@ class OrganizerController extends Controller implements HasMiddleware
         $earlyWindow = $eventStartTime->copy()->subMinutes(30);
         $lateWindow  = $eventEndTime->copy()->addHours(3);
 
+        if ($now->gt($lateWindow)) {
+            return view('organizer.scan-result', ['status' => 'error', 'message' => 'The attendance window has closed.']);
+        }
+
         if ($now->lt($earlyWindow)) {
             $start = $eventStartTime->format('h:i A');
             return view('organizer.scan-result', [
@@ -425,12 +496,23 @@ class OrganizerController extends Controller implements HasMiddleware
             ]);
         }
 
+        if ($request->isMethod('get')) {
+            return view('organizer.scan-confirm', compact('registration', 'token'));
+        }
+
+        $scanKey = 'attendance-scan:'.Auth::id().':'.$request->input('scan_id');
+        if (!\Illuminate\Support\Facades\Cache::add($scanKey, true, now()->addDay())) {
+            return view('organizer.scan-result', ['status' => 'warning', 'message' => 'This scan has already been processed.']);
+        }
+
         // ── Case 1: First Scan -> Time In (Check-in) ─────────────────────
         if (!$registration->attendance) {
             $attendance = Attendance::create([
                 'registration_id' => $registration->id,
                 'checked_in_at'   => now(),
                 'status'          => 'verified',
+                'verified_by'     => Auth::id(),
+                'verified_at'     => now(),
             ]);
 
             \App\Models\AttendanceAuditLog::create([

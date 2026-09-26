@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\SafeEmailIdentifier;
 use Illuminate\Foundation\Http\FormRequest;
 
 class LoginRequest extends FormRequest
@@ -21,7 +22,7 @@ class LoginRequest extends FormRequest
     {
         if ($this->has('email')) {
             $this->merge([
-                'email' => trim(str_replace(["\0", "\r", "\n"], '', (string) $this->input('email'))),
+                'email' => strtolower(trim(str_replace(["\0", "\r", "\n"], '', (string) $this->input('email')))),
             ]);
         }
         if ($this->has('password')) {
@@ -37,7 +38,7 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email'    => 'required|string|email:rfc|max:255',
+            'email'    => ['required', 'string', 'email:rfc', 'max:255', new SafeEmailIdentifier()],
             'password' => 'required|string|max:255',
         ];
     }

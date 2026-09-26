@@ -9,6 +9,7 @@ use App\Models\VenueReservationRoom;
 use App\Models\VenueReservationApproval;
 use App\Models\FileHuntingSignatory;
 use App\Models\User;
+use App\Models\EquipmentRequest;
 use App\Http\Requests\VenueReservationStoreRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -43,6 +44,7 @@ class StudentDepartmentController extends Controller implements HasMiddleware
 
         // Fetch user's approved/published events to link reservations if needed.
         $myEvents = Event::where('organizer_id', $user->id)
+            ->with('equipmentRequests')
             ->orderByDesc('event_date')
             ->get();
 
@@ -131,7 +133,13 @@ class StudentDepartmentController extends Controller implements HasMiddleware
         // For backward compatibility save first room
         $firstRoom = $v['rooms'][0];
 
-        $reservation = \Illuminate\Support\Facades\DB::transaction(function () use ($v, $finalEventId, $finalEventTitle, $firstRoom, $firstSignatory) {
+        $equipmentItems = collect($v['equipment_items'] ?? [])->filter(fn ($item) => trim((string) ($item['item_name'] ?? '')) !== '')->values();
+        if ($equipmentItems->isEmpty() && $finalEventId) {
+            $equipmentItems = Event::find($finalEventId)?->equipmentRequests
+                ->map(fn ($item) => ['item_name' => $item->item_name, 'quantity' => $item->quantity, 'purpose' => $item->purpose]) ?? collect();
+        }
+
+        $reservation = \Illuminate\Support\Facades\DB::transaction(function () use ($v, $finalEventId, $finalEventTitle, $firstRoom, $firstSignatory, $equipmentItems) {
             $res = VenueReservation::create([
                 'event_id'           => $finalEventId,
                 'event_title'        => $finalEventTitle,
@@ -150,6 +158,17 @@ class StudentDepartmentController extends Controller implements HasMiddleware
                 VenueReservationRoom::create([
                     'venue_reservation_id' => $res->id,
                     'room_name'            => $room,
+                ]);
+            }
+
+            foreach ($equipmentItems as $item) {
+                EquipmentRequest::create([
+                    'venue_reservation_id' => $res->id,
+                    'requested_by' => Auth::id(),
+                    'item_name' => trim($item['item_name']),
+                    'quantity' => max(1, (int) ($item['quantity'] ?? 1)),
+                    'purpose' => $item['purpose'] ?? null,
+                    'status' => 'requested',
                 ]);
             }
 
@@ -180,7 +199,7 @@ class StudentDepartmentController extends Controller implements HasMiddleware
 
     public function showPermissionForm($id)
     {
-        $res = VenueReservation::with(['event', 'reservedBy', 'approvals.approver', 'rooms'])->findOrFail($id);
+        $res = VenueReservation::with(['event', 'reservedBy', 'approvals.approver', 'rooms', 'equipmentRequests.requestedBy'])->findOrFail($id);
         
         $user = Auth::user();
         if ($user->role === 'student' && $res->reserved_by !== $user->id) {
@@ -210,8 +229,8 @@ class StudentDepartmentController extends Controller implements HasMiddleware
                 }
                 $path = $request->file('signature')->store('signatures', 's3');
             } catch (\Throwable $e) {
-                // Fallback to local public disk if S3 fails or is unconfigured
-                $path = $request->file('signature')->store('signatures', 'public');
+                // Keep signature images private when object storage is unavailable.
+                $path = $request->file('signature')->store('signatures', 'local');
             }
 
             $user->update(['e_signature_path' => $path]);

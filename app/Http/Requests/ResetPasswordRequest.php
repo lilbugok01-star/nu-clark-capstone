@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\SafeEmailIdentifier;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Password;
 
@@ -21,7 +22,7 @@ class ResetPasswordRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email'      => 'required|string|email:rfc|max:255',
+            'email'      => ['required', 'string', 'email:rfc', 'max:255', new SafeEmailIdentifier()],
             'student_id' => 'required|string|regex:/^\d{4}-\d{6}$/',
             'password'   => [
                 'required',

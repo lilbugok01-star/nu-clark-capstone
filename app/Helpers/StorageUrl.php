@@ -16,6 +16,11 @@ class StorageUrl
             return '';
         }
 
+        if (str_starts_with($path, 'signatures/') || str_starts_with($path, 'receipts/')
+            || str_starts_with($path, 'attendance-photos/') || str_starts_with($path, 'attendance/')) {
+            return route('storage.s3', ['path' => $path]);
+        }
+
         // If file exists on local public storage disk, return local asset URL
         if (\Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
             return asset('storage/' . $path);

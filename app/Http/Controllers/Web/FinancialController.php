@@ -148,10 +148,10 @@ class FinancialController extends Controller implements HasMiddleware
         }
 
         $validated = $request->validate([
-            'category'         => 'required|string',
-            'description'      => 'required|string',
-            'estimated_amount' => 'required|numeric|min:0',
-            'actual_amount'    => 'nullable|numeric|min:0',
+            'category'         => 'required|string|max:100',
+            'description'      => 'required|string|max:255',
+            'estimated_amount' => 'required|numeric|decimal:0,2|min:0|max:9999999999.99',
+            'actual_amount'    => 'nullable|numeric|decimal:0,2|min:0|max:9999999999.99',
             'status'           => 'required|in:planned,approved,spent,cancelled'
         ]);
 
@@ -175,10 +175,10 @@ class FinancialController extends Controller implements HasMiddleware
         }
 
         $validated = $request->validate([
-            'category'         => 'required|string',
-            'description'      => 'required|string',
-            'estimated_amount' => 'required|numeric|min:0',
-            'actual_amount'    => 'nullable|numeric|min:0',
+            'category'         => 'required|string|max:100',
+            'description'      => 'required|string|max:255',
+            'estimated_amount' => 'required|numeric|decimal:0,2|min:0|max:9999999999.99',
+            'actual_amount'    => 'nullable|numeric|decimal:0,2|min:0|max:9999999999.99',
             'status'           => 'required|in:planned,approved,spent,cancelled'
         ]);
 
@@ -253,12 +253,12 @@ class FinancialController extends Controller implements HasMiddleware
 
         $validated = $request->validate([
             'payment_type'     => 'required|in:income,expense',
-            'amount'           => 'required|numeric|min:0.01',
-            'description'      => 'required|string',
-            'payment_method'   => 'nullable|string',
+            'amount'           => 'required|numeric|decimal:0,2|min:0.01|max:9999999999.99',
+            'description'      => 'required|string|max:255',
+            'payment_method'   => 'nullable|string|max:100',
             'payment_date'     => 'required|date',
             'receipt'          => 'nullable|file|mimes:jpg,png,pdf|max:5120',
-            'reference_number' => 'nullable|string',
+            'reference_number' => 'nullable|string|max:100',
             'notes'            => 'nullable|string'
         ]);
 
@@ -266,7 +266,8 @@ class FinancialController extends Controller implements HasMiddleware
         $validated['recorded_by'] = Auth::id();
 
         if ($request->hasFile('receipt')) {
-            $path = $request->file('receipt')->store('receipts', 'public');
+            $path = $request->file('receipt')->store('receipts', 'local');
+            abort_unless($path, 503, 'Receipt storage is unavailable. Please try again.');
             $validated['receipt_path'] = $path;
         }
 

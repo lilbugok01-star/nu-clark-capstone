@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Registration;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class QrCodeController extends Controller
@@ -14,11 +15,7 @@ class QrCodeController extends Controller
         $registration = Registration::with('event', 'user')
             ->findOrFail($registrationId);
 
-        // Ensure requester owns this registration or is admin/organizer
-        $user = $request->user();
-        if ($user->role === 'student' && $registration->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        Gate::authorize('view', $registration);
 
         if ($registration->isExpired()) {
             return response()->json(['message' => 'QR code has expired.'], 422);
@@ -50,6 +47,7 @@ class QrCodeController extends Controller
     public function info(Request $request, $registrationId)
     {
         $registration = Registration::with('event', 'user')->findOrFail($registrationId);
+        Gate::authorize('view', $registration);
 
         return response()->json([
             'registration'  => $registration,

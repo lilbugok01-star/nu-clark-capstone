@@ -43,6 +43,10 @@ class VenueReservationStoreRequest extends FormRequest
             ],
             'expected_attendees' => 'nullable|integer|min:1',
             'purpose'            => 'nullable|string',
+            'equipment_items'    => 'nullable|array|max:20',
+            'equipment_items.*.item_name' => 'nullable|string|max:150',
+            'equipment_items.*.quantity'  => 'nullable|integer|min:1|max:10000',
+            'equipment_items.*.purpose'   => 'nullable|string|max:255',
         ];
     }
 

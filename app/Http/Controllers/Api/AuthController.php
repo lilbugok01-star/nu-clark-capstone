@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\AppNotification;
 use App\Mail\VerificationCodeMail;
 use App\Mail\PasswordResetMail;
+use App\Rules\SafeEmailIdentifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -20,12 +21,13 @@ class AuthController extends Controller
 {
     public function register(Request $request)
     {
+        $this->normalizeEmail($request);
         $validated = $request->validate([
             'first_name'  => 'required|string|max:255',
             'middle_name' => 'nullable|string|max:255',
             'surname'     => 'required|string|max:255',
             'email'      => [
-                'required', 'email', 'unique:users',
+                'required', 'string', 'email:rfc', 'max:255', new SafeEmailIdentifier(), 'unique:users,email',
                 function ($attribute, $value, $fail) {
                     if (!str_ends_with(strtolower($value), '@students.nu-clark.edu.ph')) {
                         $fail('Only official NU Clark student emails (@students.nu-clark.edu.ph) are allowed.');
@@ -91,12 +93,13 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required',
+        $this->normalizeEmail($request);
+        $validated = $request->validate([
+            'email' => ['required', 'string', 'email:rfc', 'max:255', new SafeEmailIdentifier()],
+            'password' => ['required', 'string'],
         ]);
 
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        if (!Auth::attempt($validated)) {
             throw ValidationException::withMessages([
                 'email' => ['Invalid credentials.'],
             ]);
@@ -200,18 +203,22 @@ class AuthController extends Controller
 
     public function forgotPassword(Request $request)
     {
-        $request->validate(['email' => 'required|email|exists:users,email']);
+        $this->normalizeEmail($request);
+        $validated = $request->validate([
+            'email' => ['required', 'string', 'email:rfc', 'max:255', new SafeEmailIdentifier()],
+        ]);
 
-        Password::sendResetLink($request->only('email'));
+        Password::sendResetLink(['email' => $validated['email']]);
 
-        return response()->json(['message' => 'Password reset link sent to your email.']);
+        return response()->json(['message' => 'If an account matches that email, a password reset link will be sent.']);
     }
 
     public function resetPassword(Request $request)
     {
-        $request->validate([
+        $this->normalizeEmail($request);
+        $validated = $request->validate([
             'token'    => 'required',
-            'email'    => 'required|email',
+            'email' => ['required', 'string', 'email:rfc', 'max:255', new SafeEmailIdentifier()],
             'password' => [
                 'required',
                 'confirmed',
@@ -224,7 +231,7 @@ class AuthController extends Controller
         ]);
 
         $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
+            $validated,
             function ($user, $password) {
                 $user->forceFill(['password' => Hash::make($password)])->save();
             }
@@ -235,5 +242,12 @@ class AuthController extends Controller
         }
 
         return response()->json(['message' => 'Password reset successfully.']);
+    }
+
+    private function normalizeEmail(Request $request): void
+    {
+        if ($request->has('email')) {
+            $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
+        }
     }
 }

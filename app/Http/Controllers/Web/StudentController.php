@@ -185,28 +185,11 @@ class StudentController extends Controller implements HasMiddleware
     {
         $event = Event::where('status', 'published')->findOrFail($eventId);
 
-        if ($event->isFull()) {
-            return back()->with('error', 'Sorry, this event is already at full capacity.');
+        try {
+            app(\App\Services\EventRegistrationService::class)->register(Auth::id(), (int) $eventId);
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            return back()->with('error', $exception->validator->errors()->first());
         }
-
-        if (Registration::where('user_id', Auth::id())->where('event_id', $eventId)->where('status', '!=', 'cancelled')->exists()) {
-            return back()->with('error', 'You are already registered for this event.');
-        }
-
-        $qrToken = Registration::generateQrToken(Auth::id(), $eventId);
-        $evDateStr = $event->event_date instanceof \DateTimeInterface 
-            ? $event->event_date->format('Y-m-d') 
-            : \Carbon\Carbon::parse($event->event_date)->format('Y-m-d');
-        $expires = \Carbon\Carbon::parse($evDateStr . ' ' . $event->end_time)->addDay();
-
-        Registration::create([
-            'user_id'       => Auth::id(),
-            'event_id'      => $eventId,
-            'qr_token'      => $qrToken,
-            'qr_expires_at' => $expires,
-            'status'        => 'confirmed',
-            'registered_at' => now(),
-        ]);
 
         AppNotification::create([
             'user_id' => Auth::id(),
@@ -231,20 +214,30 @@ class StudentController extends Controller implements HasMiddleware
 
     public function checkin(Request $request)
     {
+        return \Illuminate\Support\Facades\DB::transaction(fn () => $this->recordCheckin($request));
+    }
+
+    private function recordCheckin(Request $request)
+    {
         $request->validate([
             'qr_token'   => 'required|string',
-            'photo'      => 'nullable|image|max:5120',
-            'photo_data' => 'nullable|string',
+            'photo'      => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'photo_data' => ['nullable', new \App\Rules\AttendancePhoto],
         ]);
 
         if (!$request->hasFile('photo') && empty($request->photo_data)) {
             return back()->with('error', 'A photo is required for attendance check-in. Please take a selfie.');
         }
 
-        $registration = Registration::with('event')->where('qr_token', $request->qr_token)->first();
+        $registration = Registration::with('event')->where('user_id', Auth::id())
+            ->where('qr_token', $request->qr_token)->lockForUpdate()->first();
 
         if (!$registration) {
             return back()->with('error', 'Invalid QR code.');
+        }
+
+        if ($registration->status === 'cancelled' || $registration->event?->status !== 'published') {
+            return back()->with('error', 'This registration or event is no longer active.');
         }
 
         if ($registration->isExpired()) {
@@ -318,9 +311,14 @@ class StudentController extends Controller implements HasMiddleware
 
     public function checkout(Request $request, $registrationId)
     {
+        return \Illuminate\Support\Facades\DB::transaction(fn () => $this->recordCheckout($request, $registrationId));
+    }
+
+    private function recordCheckout(Request $request, $registrationId)
+    {
         $request->validate([
-            'photo'      => 'nullable|image|max:5120',
-            'photo_data' => 'nullable|string',
+            'photo'      => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'photo_data' => ['nullable', new \App\Rules\AttendancePhoto],
         ]);
 
         if (!$request->hasFile('photo') && empty($request->photo_data)) {
@@ -329,7 +327,17 @@ class StudentController extends Controller implements HasMiddleware
 
         $registration = Registration::with(['attendance', 'event'])
             ->where('user_id', Auth::id())
+            ->lockForUpdate()
             ->findOrFail($registrationId);
+
+        if ($registration->status === 'cancelled' || $registration->event?->status !== 'published') {
+            return back()->with('error', 'This registration or event is no longer active.');
+        }
+        $event = $registration->event;
+        $endsAt = \Carbon\Carbon::parse($event->event_date->toDateString().' '.$event->end_time)->addHours(3);
+        if (!$event->event_date->isToday() || now()->gt($endsAt)) {
+            return back()->with('error', 'The attendance window has closed.');
+        }
 
         if (!$registration->attendance) {
             return back()->with('error', 'No check-in record found for this registration.');

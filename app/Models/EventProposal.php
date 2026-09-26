@@ -10,13 +10,14 @@ class EventProposal extends Model
         'event_id', 'prepared_by', 'proposal_number', 'status',
         'event_overview', 'objectives', 'target_audience',
         'estimated_budget', 'venue_details', 'schedule_details',
-        'requirements', 'expected_outcomes',
+        'requirements', 'expected_outcomes', 'recommendations', 'recommendations_applied_at',
         'approved_by', 'approved_at', 'rejection_reason',
     ];
 
     protected $casts = [
         'estimated_budget' => 'decimal:2',
         'approved_at'      => 'datetime',
+        'recommendations_applied_at' => 'datetime',
     ];
 
     public function event()

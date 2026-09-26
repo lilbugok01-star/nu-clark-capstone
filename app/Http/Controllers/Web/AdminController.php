@@ -507,6 +507,9 @@ class AdminController extends Controller implements HasMiddleware
         ]);
 
         $event = Event::findOrFail($id);
+        if ($request->status === 'published' && !$event->hasCompleteApprovalEvidence()) {
+            return back()->with('error', 'The event cannot be published until an approved proposal is attached and all required signatories have approved it.');
+        }
         $old = $event->toArray();
         $event->update(['status' => $request->status]);
 
@@ -633,21 +636,21 @@ class AdminController extends Controller implements HasMiddleware
     {
         $request->validate([
             'signatories'                  => 'required|array|min:1',
-            'signatories.*.role'           => 'required|string',
+            'signatories.*.role'           => 'required|string|distinct|in:executive_director,program_chair,dean,student_development,adviser,department_head',
             'signatories.*.position_label' => 'required|string|max:100',
             'signatories.*.is_active'      => 'sometimes|boolean',
         ]);
 
         // Wipe existing and re-insert in order — wrapped in transaction to prevent data loss
         \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
-            FileHuntingSignatory::truncate();
+            FileHuntingSignatory::query()->delete();
 
             foreach ($request->signatories as $i => $sig) {
                 FileHuntingSignatory::create([
                     'step_order'     => $i + 1,
                     'role'           => $sig['role'],
                     'position_label' => $sig['position_label'],
-                    'is_active'      => isset($sig['is_active']) ? 1 : 0,
+                    'is_active'      => (bool) ($sig['is_active'] ?? false),
                 ]);
             }
         });

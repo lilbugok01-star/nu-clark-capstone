@@ -73,21 +73,21 @@
                                 <div class="mb-3">
                                     <label class="form-label fw-semibold d-block">Transaction Type <span class="text-danger">*</span></label>
                                     <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="type" id="typeIncome" value="income" {{ old('type', 'income') == 'income' ? 'checked' : '' }}>
+                                        <input class="form-check-input" type="radio" name="payment_type" id="typeIncome" value="income" {{ old('payment_type', 'income') == 'income' ? 'checked' : '' }} required>
                                         <label class="form-check-label text-success fw-bold" for="typeIncome">Income</label>
                                     </div>
                                     <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="type" id="typeExpense" value="expense" {{ old('type') == 'expense' ? 'checked' : '' }}>
+                                        <input class="form-check-input" type="radio" name="payment_type" id="typeExpense" value="expense" {{ old('payment_type') == 'expense' ? 'checked' : '' }} required>
                                         <label class="form-check-label text-danger fw-bold" for="typeExpense">Expense</label>
                                     </div>
-                                    @error('type')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                                    @error('payment_type')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                                 </div>
 
                                 <div class="mb-3">
                                     <label class="form-label fw-semibold">Amount <span class="text-danger">*</span></label>
                                     <div class="input-group">
                                         <span class="input-group-text">₱</span>
-                                        <input type="number" step="0.01" min="0" name="amount" class="form-control @error('amount') is-invalid @enderror" value="{{ old('amount') }}" required>
+                                        <input type="number" step="0.01" min="0.01" max="9999999999.99" name="amount" class="form-control @error('amount') is-invalid @enderror" value="{{ old('amount') }}" required>
                                     </div>
                                     @error('amount')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                                 </div>
@@ -165,18 +165,18 @@
                                     <tbody>
                                         @forelse($payments as $payment)
                                             @php
-                                                $isIncome = $payment->type === 'income';
+                                                $isIncome = $payment->payment_type === 'income';
                                                 $badgeClass = $isIncome ? 'bg-success' : 'bg-danger';
                                                 $amountColor = $isIncome ? 'text-success' : 'text-danger';
                                                 $sign = $isIncome ? '+' : '-';
                                             @endphp
                                             <tr>
                                                 <td>{{ \Carbon\Carbon::parse($payment->payment_date)->format('M d, Y') }}</td>
-                                                <td><span class="badge {{ $badgeClass }}">{{ ucfirst($payment->type) }}</span></td>
+                                                <td><span class="badge {{ $badgeClass }}">{{ ucfirst($payment->payment_type) }}</span></td>
                                                 <td>
                                                     {{ $payment->description }}
                                                     @if($payment->receipt_path)
-                                                        <a href="{{ Storage::url($payment->receipt_path) }}" target="_blank" class="ms-1" title="View Receipt"><i class="bi bi-paperclip"></i></a>
+                                                        <a href="{{ \App\Helpers\StorageUrl::url($payment->receipt_path) }}" target="_blank" rel="noopener" class="ms-1" title="View Receipt"><i class="bi bi-paperclip"></i></a>
                                                     @endif
                                                 </td>
                                                 <td class="text-end fw-bold {{ $amountColor }}">{{ $sign }} ₱{{ number_format($payment->amount, 2) }}</td>

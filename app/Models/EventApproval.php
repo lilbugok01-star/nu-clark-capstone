@@ -16,6 +16,12 @@ class EventApproval extends Model
         'status',
         'comments',
         'e_signature_used',
+        'proposal_reviewed_at',
+        'reviewed_proposal_id',
+    ];
+
+    protected $casts = [
+        'proposal_reviewed_at' => 'datetime',
     ];
 
     public function event()
@@ -26,5 +32,10 @@ class EventApproval extends Model
     public function approver()
     {
         return $this->belongsTo(User::class, 'approver_id');
+    }
+
+    public function reviewedProposal()
+    {
+        return $this->belongsTo(EventProposal::class, 'reviewed_proposal_id');
     }
 }

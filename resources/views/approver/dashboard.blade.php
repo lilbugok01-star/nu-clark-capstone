@@ -56,6 +56,14 @@
                     <div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden">
                         <div class="card-body p-4">
                             @forelse($pendingEvents as $event)
+                                @php
+                                    $evidenceOpened = $event->approvedProposal && $event->approvals->contains(fn($approval) =>
+                                        $approval->approver_id === $user->id &&
+                                        $approval->role_level === $user->role &&
+                                        $approval->reviewed_proposal_id === $event->approvedProposal->id &&
+                                        $approval->proposal_reviewed_at !== null
+                                    );
+                                @endphp
                                 <div class="border rounded-3 p-3 mb-3 hover-shadow-sm transition-all bg-light">
                                     <div class="d-flex justify-content-between align-items-start">
                                         <div>
@@ -70,15 +78,31 @@
                                                 <br>
                                                 {{ Str::limit($event->description, 100) }}
                                             </div>
-                                            <a href="{{ route('event.show', $event->id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">View Details</a>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <a href="{{ route('event.show', $event->id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">View Details</a>
+                                                @if($event->approvedProposal)
+                                                    <a href="{{ route('proposal.export-pdf', $event->approvedProposal) }}" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3"><i class="bi bi-paperclip me-1"></i>Approved Proposal Evidence</a>
+                                                @else
+                                                    <span class="badge bg-danger align-self-center">Approved proposal missing</span>
+                                                @endif
+                                            </div>
+                                            @if($event->equipmentRequests->isNotEmpty())
+                                                <div class="mt-2 p-2 bg-white border rounded small"><strong>Equipment checklist:</strong> {{ $event->equipmentRequests->map(fn($item) => $item->item_name . ' × ' . $item->quantity)->implode(', ') }}</div>
+                                            @endif
                                         </div>
                                         <div class="text-end" style="min-width: 140px;">
-                                            <form action="{{ route('approver.events.approve', $event->id) }}" method="POST" class="mb-1" onsubmit="return confirm('Approve this event using your E-Signature?')">
-                                                @csrf
-                                                <button class="btn btn-sm btn-success w-100 fw-bold mb-1" {{ !$user->e_signature_path ? 'disabled' : '' }}>
+                                             <form action="{{ route('approver.events.approve', $event->id) }}" method="POST" class="mb-1" onsubmit="return confirm('Approve this event using your E-Signature?')">
+                                                 @csrf
+                                                 <div class="form-check text-start mb-2 small"><input class="form-check-input" type="checkbox" name="proposal_reviewed" value="1" id="proposalReviewed{{ $event->id }}" required {{ !$evidenceOpened ? 'disabled' : '' }}><label class="form-check-label" for="proposalReviewed{{ $event->id }}">Proposal checked</label></div>
+                                                 <button class="btn btn-sm btn-success w-100 fw-bold mb-1" {{ (!$user->e_signature_path || !$evidenceOpened) ? 'disabled' : '' }}>
                                                     <i class="bi bi-check2-circle"></i> Approve
                                                 </button>
                                             </form>
+                                            @if($event->approvedProposal && !$evidenceOpened)
+                                                <div class="text-muted text-center mb-2" style="font-size:.68rem;line-height:1.2">Open the evidence, then refresh this page to approve.</div>
+                                            @elseif($evidenceOpened)
+                                                <div class="text-success text-center mb-2" style="font-size:.68rem"><i class="bi bi-check-circle-fill"></i> Evidence opened</div>
+                                            @endif
                                             <button class="btn btn-sm btn-outline-danger w-100 fw-bold" data-bs-toggle="modal" data-bs-target="#rejectEventModal{{ $event->id }}" {{ !$user->e_signature_path ? 'disabled' : '' }}>
                                                 <i class="bi bi-x-circle"></i> Reject
                                             </button>

@@ -18,8 +18,8 @@
     <a href="{{ route('admin.analytics') }}" class="sidebar-link @if(request()->routeIs('admin.analytics*')) active @endif">
         <i class="bi bi-graph-up-arrow"></i> Analytics
     </a>
-    <a href="{{ route('admin.predictive') }}" class="sidebar-link @if(request()->routeIs('admin.predictive*')) active @endif">
-        <i class="bi bi-cpu"></i> Predictive Analytics
+    <a href="{{ route('admin.previous-events.index') }}" class="sidebar-link @if(request()->routeIs('admin.previous-events*')) active @endif">
+        <i class="bi bi-clock-history"></i> Previous Events
     </a>
     <a href="{{ route('admin.financial') }}" class="sidebar-link @if(request()->routeIs('admin.financial*') || request()->routeIs('admin.event.budget*') || request()->routeIs('admin.event.payments*')) active @endif">
         <i class="bi bi-cash-stack"></i> Financial

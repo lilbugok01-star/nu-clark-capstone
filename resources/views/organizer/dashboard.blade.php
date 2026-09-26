@@ -245,11 +245,28 @@
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const code = jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
                 if (code && code.data) {
-                    // QR found — stop everything and navigate
+                    let scanUrl;
+                    try {
+                        scanUrl = new URL(code.data);
+                        if (scanUrl.origin !== window.location.origin || !/^\/organizer\/scan\/[^/]+$/.test(scanUrl.pathname)) return;
+                    } catch (_) {
+                        return;
+                    }
                     stopCamera();
                     const modalInstance = bootstrap.Modal.getInstance(scannerModal);
                     if (modalInstance) modalInstance.hide();
-                    window.location.href = code.data;
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = scanUrl.origin + scanUrl.pathname;
+                    for (const [name, value] of Object.entries({ _token: @json(csrf_token()), scan_id: crypto.randomUUID() })) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = name;
+                        input.value = value;
+                        form.appendChild(input);
+                    }
+                    document.body.appendChild(form);
+                    form.submit();
                 }
             }, 100);
 
